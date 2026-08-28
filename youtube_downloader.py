@@ -27,12 +27,28 @@ def extract_youtube_url(text: str) -> str | None:
     return None
 
 
+try:
+    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+    ffmpeg_dir = os.path.dirname(ffmpeg_exe)
+    if ffmpeg_dir not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
+except Exception:
+    ffmpeg_exe = "ffmpeg"
+
+YOUTUBE_EXTRACTOR_ARGS = {
+    "youtube": {
+        "player_client": ["android", "ios", "web_creator", "mweb", "web"]
+    }
+}
+
+
 def get_youtube_video_info(url: str) -> dict:
     """Extracts metadata for a YouTube video without downloading the stream."""
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
+        "extractor_args": YOUTUBE_EXTRACTOR_ARGS,
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
@@ -50,7 +66,6 @@ def download_youtube_video(url: str, output_path: str, progress_callback=None) -
     Downloads YouTube video at best quality up to 1080p and merges video+audio into MP4.
     Includes Windows file-lock recovery for [WinError 32].
     """
-    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
     out_dir = str(Path(output_path).parent)
     base_name = Path(output_path).stem
 
@@ -82,6 +97,7 @@ def download_youtube_video(url: str, output_path: str, progress_callback=None) -
         "windowsfilenames": True,
         "retries": 10,
         "fragment_retries": 10,
+        "extractor_args": YOUTUBE_EXTRACTOR_ARGS,
         "progress_hooks": [ydl_hook] if progress_callback else [],
     }
 
@@ -128,7 +144,6 @@ def download_youtube_section(url: str, start_sec: float, end_sec: float, output_
     Downloads only a specific segment [start_sec, end_sec] from a YouTube video without downloading the full video.
     Ideal for fast highlights slicing on long videos.
     """
-    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
     out_dir = str(Path(output_path).parent)
     base_name = Path(output_path).stem
 
@@ -153,10 +168,12 @@ def download_youtube_section(url: str, start_sec: float, end_sec: float, output_
         "nopart": True,
         "overwrites": True,
         "windowsfilenames": True,
+        "extractor_args": YOUTUBE_EXTRACTOR_ARGS,
         "download_ranges": download_ranges,
         "force_keyframes_at_cuts": True,
         "progress_hooks": [ydl_hook] if progress_callback else [],
     }
+
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
