@@ -749,6 +749,60 @@ async def track_prompt_callback_handler(event):
     )
 
 
+@client.on(events.CallbackQuery(pattern=r"^rate:([a-zA-Z0-9_-]+):(\d+)$"))
+async def rate_clip_callback_handler(event):
+    sender = await event.get_sender()
+    sender_id = sender.id if sender else event.sender_id
+    clip_job_id = event.pattern_match.group(1)
+    rating = int(event.pattern_match.group(2))
+
+    # Save to global AI memory database (hooks & highlights in Supabase)
+    record_user_rating(clip_job_id, rating)
+    record_highlight_rating(clip_job_id, rating)
+    
+    # Also check base job_id (before _)
+    base_job_id = clip_job_id.split("_")[0]
+    if base_job_id != clip_job_id:
+        record_user_rating(base_job_id, rating)
+
+    # Reward user with +1 bonus generation for helping train AI
+    db_add_credits(sender_id, 1)
+
+    icon_map = {
+        10: "🌟 10/10 (Ідеал)", 9: "🔥 9/10 (Топово)", 8: "✨ 8/10 (Вдало)", 7: "👍 7/10 (Добре)",
+        6: "👌 6/10 (Нормально)", 5: "⚖️ 5/10 (Середньо)", 4: "⚠️ 4/10 (Слабко)", 3: "❌ 3/10 (Погано)",
+        2: "🚫 2/10 (Дуже погано)", 1: "⛔️ 1/10 (Провал)"
+    }
+    label = icon_map.get(rating, f"{rating}/10")
+
+    await event.answer(f"✅ Оцінку {label} збережено в пам'ять ШІ! Нараховано +1 бонусне відео 🎁", alert=True)
+    
+    # Replace rating buttons to show it has been processed
+    new_buttons = [
+        [
+            Button.inline(f"✅ Ваша оцінка: {label} (ШІ навчено)", data="rated_done"),
+            Button.inline("📊 Статистика ШІ", data="quick_cmd:stats")
+        ],
+        [
+            Button.inline("🖼 Завантажити обкладинку 9:16", data=f"gen_thumb:{clip_job_id}"),
+            Button.inline("📊 Відстежувати перегляди", data=f"track_prompt:{clip_job_id}")
+        ]
+    ]
+    if TARGET_ARCHIVE_CHANNEL:
+        new_buttons.insert(1, [Button.inline(f"📢 Опублікувати в Канал ({TARGET_ARCHIVE_CHANNEL})", data=f"post_chan:{clip_job_id}")])
+
+    try:
+        await event.edit(buttons=new_buttons)
+    except Exception:
+        pass
+
+
+@client.on(events.CallbackQuery(pattern=r"^rated_done$"))
+async def rated_done_callback(event):
+    await event.answer("✅ Дякуємо! Цей відрізок вже додано в глобальну матрицю навчання Gemini.", alert=False)
+
+
+
 @client.on(events.NewMessage(pattern=r"^/stats(?:@\w+)?(?:\s+.*)?$"))
 async def stats_handler(event):
     sender = await event.get_sender()
