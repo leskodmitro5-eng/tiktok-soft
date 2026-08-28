@@ -1,0 +1,26 @@
+# Virtual Environment & Tools
+venv/
+.venv/
+env/
+.git_bin/
+mingit.zip
+__pycache__/
+*.pyc
+
+# Sensitive environment configs
+.env
+
+# Temporary storage & media files
+temp_storage/
+*.mp4
+*.mp3
+*.mov
+*.jpg
+*.png
+!banner_video_tiktok/IMG_9654.MOV
+!bait_soxr/bait.mp4
+
+# Local SQLite databases (optional, can be deployed or mounted as persistent volume)
+*.session
+*.session-journal
+bot_session.session

@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TikTok Soft AI Studio</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0f1117;
+            --card-bg: rgba(26, 29, 41, 0.75);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --accent-gold: #ffcc00;
+            --accent-red: #ff3366;
+            --accent-blue: #00d2ff;
+            --text-main: #f0f3f8;
+            --text-muted: #8e99b0;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: var(--bg-dark);
+            color: var(--text-main);
+            padding: 16px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            background-image: radial-gradient(circle at 10% 20%, rgba(0, 210, 255, 0.08) 0%, transparent 40%),
+                              radial-gradient(circle at 90% 80%, rgba(255, 51, 102, 0.08) 0%, transparent 40%);
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--accent-gold), var(--accent-red));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .badge {
+            background: rgba(255, 204, 0, 0.15);
+            color: var(--accent-gold);
+            border: 1px solid rgba(255, 204, 0, 0.3);
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Timeline Trimmer */
+        .timeline-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .timeline-bar {
+            height: 48px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 10px;
+            border: 1px dashed rgba(255, 255, 255, 0.15);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+        }
+
+        .timeline-clip {
+            position: absolute;
+            left: 15%;
+            width: 70%;
+            height: 100%;
+            background: linear-gradient(90deg, rgba(0, 210, 255, 0.3), rgba(255, 51, 102, 0.3));
+            border-left: 3px solid var(--accent-blue);
+            border-right: 3px solid var(--accent-red);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .timeline-inputs {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .time-box {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-color);
+            padding: 8px 12px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .time-box label {
+            display: block;
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-bottom: 2px;
+        }
+
+        .time-box input {
+            background: transparent;
+            border: none;
+            color: var(--text-main);
+            font-size: 16px;
+            font-weight: 700;
+            text-align: center;
+            width: 100%;
+            outline: none;
+        }
+
+        /* Subtitle Preset Selector */
+        .style-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .style-btn {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-color);
+            padding: 12px;
+            border-radius: 12px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .style-btn.active {
+            border-color: var(--accent-gold);
+            background: rgba(255, 204, 0, 0.1);
+        }
+
+        .style-btn span {
+            display: block;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .style-btn .preview {
+            font-size: 15px;
+            margin-top: 4px;
+            font-weight: 900;
+        }
+
+        .p-gold { color: #ffcc00; text-shadow: 0 0 8px rgba(255,204,0,0.5); }
+        .p-clean { color: #ffffff; text-shadow: 0 0 6px #000; }
+        .p-neon { color: #00ffcc; text-shadow: 0 0 10px #00ffcc; }
+        .p-fire { color: #ff3300; text-shadow: 0 0 8px #ffcc00; }
+
+        /* Platform Selector */
+        .platform-switch {
+            display: flex;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            padding: 4px;
+            gap: 4px;
+        }
+
+        .plat-btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .plat-btn.active {
+            background: rgba(255, 255, 255, 0.15);
+            color: var(--text-main);
+        }
+
+        /* Inputs */
+        .text-input {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 10px 14px;
+            color: var(--text-main);
+            font-size: 14px;
+            outline: none;
+        }
+
+        .text-input:focus {
+            border-color: var(--accent-blue);
+        }
+
+        /* Action Button */
+        .btn-render {
+            background: linear-gradient(135deg, #ff3366, #ff9900);
+            border: none;
+            border-radius: 16px;
+            color: #fff;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 8px 24px rgba(255, 51, 102, 0.4);
+            cursor: pointer;
+            margin-top: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-render:active {
+            transform: scale(0.98);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>TIKTOK SOFT STUDIO</h1>
+        <span class="badge">BETA v2.0</span>
+    </div>
+
+    <!-- Platform Selection -->
+    <div class="platform-switch">
+        <button class="plat-btn active" id="btn-tt" onclick="setPlatform('tiktok')">🎵 TikTok (9:16)</button>
+        <button class="plat-btn" id="btn-yt" onclick="setPlatform('youtube_shorts')">🔴 YouTube Shorts</button>
+    </div>
+
+    <!-- Timeline Trimmer -->
+    <div class="card">
+        <div class="card-title">⏱ Підрізка Таймлайну</div>
+        <div class="timeline-container">
+            <div class="timeline-bar">
+                <div class="timeline-clip" id="timeline-clip">
+                    <span id="clip-duration">30.0 сек</span>
+                </div>
+            </div>
+            <div class="timeline-inputs">
+                <div class="time-box">
+                    <label>Початок (сек)</label>
+                    <input type="number" id="start-time" value="0.0" step="0.5" min="0" onchange="updateTimeline()">
+                </div>
+                <div class="time-box">
+                    <label>Кінець (сек)</label>
+                    <input type="number" id="end-time" value="30.0" step="0.5" min="1" onchange="updateTimeline()">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Subtitle Style Presets -->
+    <div class="card">
+        <div class="card-title">🔤 Стиль Караоке-Субтитрів</div>
+        <div class="style-grid">
+            <div class="style-btn active" onclick="setStyle(this, 'mrbeast')">
+                <span>MrBeast Gold</span>
+                <div class="preview p-gold">ХАЙЛАЙТ 🔥</div>
+            </div>
+            <div class="style-btn" onclick="setStyle(this, 'hormozi')">
+                <span>Hormozi Clean</span>
+                <div class="preview p-clean">МАСШТАБ ⚡️</div>
+            </div>
+            <div class="style-btn" onclick="setStyle(this, 'neon')">
+                <span>Cyberpunk Neon</span>
+                <div class="preview p-neon">КЛАТЧ 🚀</div>
+            </div>
+            <div class="style-btn" onclick="setStyle(this, 'fire')">
+                <span>Action Fire</span>
+                <div class="preview p-fire">ЕПІК 💥</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom SEO Title -->
+    <div class="card">
+        <div class="card-title">📝 Заголовок & Байт</div>
+        <input type="text" class="text-input" id="seo-title" placeholder="Клікбейтний заголовок..." value="ЭПИЧНЫЙ МОМЕНТ 😱">
+    </div>
+
+    <!-- Render Trigger -->
+    <button class="btn-render" onclick="submitToTelegram()">
+        🚀 Зрендерити у високій якості
+    </button>
+
+    <script>
+        const tg = window.Telegram ? window.Telegram.WebApp : null;
+        if (tg) {
+            tg.expand();
+            tg.enableClosingConfirmation();
+        }
+
+        let selectedPlatform = "tiktok";
+        let selectedStyle = "mrbeast";
+
+        function setPlatform(plat) {
+            selectedPlatform = plat;
+            document.getElementById("btn-tt").classList.toggle("active", plat === "tiktok");
+            document.getElementById("btn-yt").classList.toggle("active", plat === "youtube_shorts");
+        }
+
+        function setStyle(el, style) {
+            document.querySelectorAll(".style-btn").forEach(b => b.classList.remove("active"));
+            el.classList.add("active");
+            selectedStyle = style;
+        }
+
+        function updateTimeline() {
+            const start = parseFloat(document.getElementById("start-time").value) || 0;
+            const end = parseFloat(document.getElementById("end-time").value) || 30;
+            const dur = Math.max(1, end - start);
+            document.getElementById("clip-duration").innerText = `${dur.toFixed(1)} сек`;
+        }
+
+        function submitToTelegram() {
+            const payload = {
+                action: "custom_render",
+                platform: selectedPlatform,
+                style: selectedStyle,
+                start: parseFloat(document.getElementById("start-time").value) || 0.0,
+                end: parseFloat(document.getElementById("end-time").value) || 30.0,
+                title: document.getElementById("seo-title").value
+            };
+
+            if (tg) {
+                tg.sendData(JSON.stringify(payload));
+            } else {
+                alert("Надіслано в бот: " + JSON.stringify(payload, null, 2));
+            }
+        }
+    </script>
+</body>
+</html>
