@@ -2,14 +2,16 @@ FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1
 
-# Install system dependencies including FFmpeg and fonts
+# Install system dependencies including FFmpeg, fonts, and Node.js (for yt-dlp JS runtime)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     fonts-liberation \
     fontconfig \
     git \
+    nodejs \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
+
 
 WORKDIR /app
 

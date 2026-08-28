@@ -47,24 +47,37 @@ try:
 except Exception:
     ffmpeg_exe = "ffmpeg"
 
-YOUTUBE_EXTRACTOR_ARGS = {
-    "youtube": {
-        "player_client": ["android", "ios"],
-        "player_skip": ["webpage", "configs"]
+def build_youtube_ydl_opts(custom_opts: dict = None) -> dict:
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "windowsfilenames": True,
+        "retries": 10,
+        "fragment_retries": 10,
     }
-}
+    if custom_opts:
+        opts.update(custom_opts)
+
+    has_cookies = COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 10
+    if has_cookies:
+        opts["cookiefile"] = str(COOKIES_FILE)
+        opts["extractor_args"] = {
+            "youtube": {
+                "player_client": ["web", "android", "ios", "mweb"]
+            }
+        }
+    else:
+        opts["extractor_args"] = {
+            "youtube": {
+                "player_client": ["android", "ios", "web"]
+            }
+        }
+    return opts
 
 
 def get_youtube_video_info(url: str) -> dict:
     """Extracts metadata for a YouTube video without downloading the stream."""
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        "extractor_args": YOUTUBE_EXTRACTOR_ARGS,
-    }
-    if COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 10:
-        ydl_opts["cookiefile"] = str(COOKIES_FILE)
+    ydl_opts = build_youtube_ydl_opts({"skip_download": True})
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
@@ -75,7 +88,6 @@ def get_youtube_video_info(url: str) -> dict:
             "uploader": info.get("uploader", "YouTube"),
             "url": url
         }
-
 
 
 def download_youtube_video(url: str, output_path: str, progress_callback=None) -> str:
@@ -102,23 +114,15 @@ def download_youtube_video(url: str, output_path: str, progress_callback=None) -
             if total > 0:
                 progress_callback(downloaded, total)
 
-    ydl_opts = {
+    ydl_opts = build_youtube_ydl_opts({
         "format": "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best",
         "outtmpl": os.path.join(out_dir, f"{base_name}.%(ext)s"),
         "ffmpeg_location": ffmpeg_exe,
         "merge_output_format": "mp4",
-        "quiet": True,
-        "no_warnings": True,
         "nopart": True,
         "overwrites": True,
-        "windowsfilenames": True,
-        "retries": 10,
-        "fragment_retries": 10,
-        "extractor_args": YOUTUBE_EXTRACTOR_ARGS,
         "progress_hooks": [ydl_hook] if progress_callback else [],
-    }
-    if COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 10:
-        ydl_opts["cookiefile"] = str(COOKIES_FILE)
+    })
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -177,23 +181,18 @@ def download_youtube_section(url: str, start_sec: float, end_sec: float, output_
 
     download_ranges = yt_dlp.utils.download_range_func(None, [(start_sec, end_sec)])
 
-    ydl_opts = {
+    ydl_opts = build_youtube_ydl_opts({
         "format": "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best",
         "outtmpl": os.path.join(out_dir, f"{base_name}.%(ext)s"),
         "ffmpeg_location": ffmpeg_exe,
         "merge_output_format": "mp4",
-        "quiet": True,
-        "no_warnings": True,
         "nopart": True,
         "overwrites": True,
-        "windowsfilenames": True,
-        "extractor_args": YOUTUBE_EXTRACTOR_ARGS,
         "download_ranges": download_ranges,
         "force_keyframes_at_cuts": True,
         "progress_hooks": [ydl_hook] if progress_callback else [],
-    }
-    if COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 10:
-        ydl_opts["cookiefile"] = str(COOKIES_FILE)
+    })
+
 
 
 
