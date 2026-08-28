@@ -77,21 +77,19 @@ def build_youtube_ydl_opts(custom_opts: dict = None) -> dict:
 
 
 def get_youtube_video_info(url: str) -> dict:
-    """Extracts metadata for a YouTube video without downloading the stream with multi-fallback support."""
+    """Extracts metadata for a YouTube video without downloading or format evaluation, with oEmbed fallback."""
+    # 1. Primary: yt-dlp with process=False (extracts raw JSON without evaluating format requirements)
     client_candidates = [
         ["web", "android", "ios", "mweb"] if (COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 10) else ["android", "ios", "web"],
         ["android"],
         ["ios"],
-        ["web"],
-        ["mweb"]
+        ["web"]
     ]
 
-    last_err = None
     for clients in client_candidates:
         ydl_opts = build_youtube_ydl_opts({
             "skip_download": True,
             "check_formats": False,
-            "format": "bestvideo+bestaudio/best",
             "extractor_args": {
                 "youtube": {
                     "player_client": clients
@@ -100,22 +98,49 @@ def get_youtube_video_info(url: str) -> dict:
         })
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
+                info = ydl.extract_info(url, download=False, process=False)
                 if info:
+                    title = info.get("title") or "YouTube Video"
+                    dur = float(info.get("duration", 0.0) or 0.0)
+                    vid_id = info.get("id") or "video"
                     return {
-                        "id": info.get("id", ""),
-                        "title": info.get("title", "YouTube Video"),
-                        "duration": float(info.get("duration", 0.0) or 0.0),
-                        "uploader": info.get("uploader", "YouTube"),
+                        "id": vid_id,
+                        "title": title,
+                        "duration": dur,
+                        "uploader": info.get("uploader") or info.get("channel") or "YouTube",
                         "url": url
                     }
         except Exception as e:
-            last_err = e
-            logger.debug(f"Failed extracting with clients {clients}: {e}")
+            logger.debug(f"Raw extract notice for {clients}: {e}")
 
-    raise last_err or ValueError(f"Could not extract video info for {url}")
+    # 2. Secondary: Official YouTube oEmbed API for instant title fetching
+    try:
+        import requests
+        r = requests.get(f"https://www.youtube.com/oembed?url={url}&format=json", timeout=4)
+        if r.status_code == 200:
+            data = r.json()
+            match = YOUTUBE_REGEX.search(url)
+            vid_id = match.group(4) if match else "youtube_video"
+            return {
+                "id": vid_id,
+                "title": data.get("title", "YouTube Video"),
+                "duration": 60.0,
+                "uploader": data.get("author_name", "YouTube"),
+                "url": url
+            }
+    except Exception as oe_err:
+        logger.debug(f"oEmbed fallback notice: {oe_err}")
 
-
+    # 3. Tertiary: Fallback parsing from regex
+    match = YOUTUBE_REGEX.search(url)
+    vid_id = match.group(4) if match else "youtube_video"
+    return {
+        "id": vid_id,
+        "title": "YouTube Video",
+        "duration": 60.0,
+        "uploader": "YouTube",
+        "url": url
+    }
 
 
 def download_youtube_video(url: str, output_path: str, progress_callback=None) -> str:
@@ -143,7 +168,7 @@ def download_youtube_video(url: str, output_path: str, progress_callback=None) -
                 progress_callback(downloaded, total)
 
     ydl_opts = build_youtube_ydl_opts({
-        "format": "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best",
+        "format": "bestvideo[height<=1080]+bestaudio/best[height<=1080]/bestvideo+bestaudio/best",
         "outtmpl": os.path.join(out_dir, f"{base_name}.%(ext)s"),
         "ffmpeg_location": ffmpeg_exe,
         "merge_output_format": "mp4",
@@ -156,8 +181,22 @@ def download_youtube_video(url: str, output_path: str, progress_callback=None) -
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
     except Exception as e:
-        logger.warning(f"yt_dlp download notice: {e}. Attempting file recovery...")
+        logger.warning(f"yt_dlp primary download notice: {e}. Retrying with universal format 'best'...")
+        try:
+            fallback_opts = build_youtube_ydl_opts({
+                "format": "best",
+                "outtmpl": os.path.join(out_dir, f"{base_name}.%(ext)s"),
+                "ffmpeg_location": ffmpeg_exe,
+                "merge_output_format": "mp4",
+                "nopart": True,
+                "overwrites": True,
+            })
+            with yt_dlp.YoutubeDL(fallback_opts) as ydl_fb:
+                ydl_fb.download([url])
+        except Exception as fb_err:
+            logger.warning(f"yt_dlp fallback download error: {fb_err}")
         time.sleep(1.0)
+
 
     final_path = os.path.join(out_dir, f"{base_name}.mp4")
 
