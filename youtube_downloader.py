@@ -54,6 +54,7 @@ def build_youtube_ydl_opts(custom_opts: dict = None) -> dict:
         "windowsfilenames": True,
         "retries": 10,
         "fragment_retries": 10,
+        "format": "bestvideo[height<=1080]+bestaudio/best[height<=1080]/bestvideo+bestaudio/best",
     }
     if custom_opts:
         opts.update(custom_opts)
@@ -77,7 +78,11 @@ def build_youtube_ydl_opts(custom_opts: dict = None) -> dict:
 
 def get_youtube_video_info(url: str) -> dict:
     """Extracts metadata for a YouTube video without downloading the stream."""
-    ydl_opts = build_youtube_ydl_opts({"skip_download": True})
+    ydl_opts = build_youtube_ydl_opts({
+        "skip_download": True,
+        "check_formats": False,
+        "format": "bestvideo+bestaudio/best",
+    })
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
@@ -88,6 +93,7 @@ def get_youtube_video_info(url: str) -> dict:
             "uploader": info.get("uploader", "YouTube"),
             "url": url
         }
+
 
 
 def download_youtube_video(url: str, output_path: str, progress_callback=None) -> str:
