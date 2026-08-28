@@ -22,7 +22,8 @@ if ENV_PATH.exists():
 else:
     load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL_RAW = os.getenv("DATABASE_URL", "")
+DATABASE_URL = DATABASE_URL_RAW.strip().strip('"').strip("'").strip() if DATABASE_URL_RAW else None
 IS_POSTGRES = DATABASE_URL is not None and (DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://"))
 
 if IS_POSTGRES:
