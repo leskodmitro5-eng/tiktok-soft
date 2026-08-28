@@ -513,20 +513,75 @@ def db_get_user(user_id: int) -> dict | None:
 
 
 def db_has_active_subscription(user: dict) -> bool:
-    """Checks whether user has an active unlimited monthly subscription."""
+    """Checks whether user has an active unlimited monthly or lifetime VIP subscription."""
     if not user:
         return False
     tier = user.get("tier", "free")
-    if tier in ("admin", "unlimited"):
+    if tier in ("admin", "vip_forever", "lifetime", "unlimited"):
         expires = user.get("subscription_expires_at")
-        if not expires:
+        if not expires or tier in ("admin", "vip_forever", "lifetime"):
             return True
         try:
             exp_date = datetime.fromisoformat(expires)
             return exp_date > datetime.now()
         except Exception:
-            return False
+            return True
     return False
+
+
+def db_grant_lifetime_vip(user_id: int) -> dict:
+    """Grants permanent lifetime VIP subscription to a user."""
+    now_str = datetime.now().isoformat()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(q("SELECT * FROM users WHERE user_id = ?"), (user_id,))
+        row = cursor.fetchone()
+        if row:
+            cursor.execute(q("""
+                UPDATE users
+                SET tier = 'vip_forever',
+                    subscription_expires_at = '2099-12-31T23:59:59',
+                    credits_balance = 9999
+                WHERE user_id = ?
+            """), (user_id,))
+        else:
+            cursor.execute(q("""
+                INSERT INTO users (
+                    user_id, username, first_name, credits_balance, tier, subscription_expires_at,
+                    referrer_id, total_spent_stars, created_at
+                ) VALUES (?, '', 'VIP User', 9999, 'vip_forever', '2099-12-31T23:59:59', NULL, 0, ?)
+            """), (user_id, now_str))
+
+        cursor.execute(q("SELECT * FROM users WHERE user_id = ?"), (user_id,))
+        updated = dict(cursor.fetchone())
+        logger.info(f"👑 Successfully granted LIFETIME VIP to user #{user_id}")
+        return updated
+
+
+def db_revoke_vip(user_id: int) -> dict | None:
+    """Revokes VIP status from user and resets tier to 'free' with 3 credits."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(q("""
+            UPDATE users
+            SET tier = 'free',
+                subscription_expires_at = NULL,
+                credits_balance = 3
+            WHERE user_id = ?
+        """), (user_id,))
+        cursor.execute(q("SELECT * FROM users WHERE user_id = ?"), (user_id,))
+        row = cursor.fetchone()
+        logger.info(f"Revoked VIP from user #{user_id}")
+        return dict(row) if row else None
+
+
+def db_get_all_users(limit: int = 50) -> list[dict]:
+    """Returns list of recent users from database."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(q("SELECT * FROM users ORDER BY created_at DESC LIMIT ?"), (limit,))
+        return [dict(r) for r in cursor.fetchall()]
+
 
 
 def db_deduct_credit(user_id: int, is_admin: bool = False) -> tuple[bool, int]:

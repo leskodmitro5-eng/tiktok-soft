@@ -46,6 +46,9 @@ from database import (
     db_add_credits,
     db_set_subscription,
     db_has_active_subscription,
+    db_grant_lifetime_vip,
+    db_revoke_vip,
+    db_get_all_users,
     db_get_referral_stats,
     db_get_user_tracked_videos,
     db_delete_tracked_video
@@ -916,7 +919,116 @@ async def set_channel_handler(event):
         )
 
 
+@client.on(events.NewMessage(pattern=r"^/(?:givevip|addvip)(?:\s+(\d+))?$"))
+async def give_vip_handler(event):
+    sender = await event.get_sender()
+    sender_id = sender.id if sender else event.sender_id
+
+    if sender_id not in ADMIN_IDS:
+        await event.reply("⛔️ Доступ заборонено. Ця команда доступна лише адміністраторам.")
+        return
+
+    target_str = event.pattern_match.group(1)
+    if not target_str:
+        await event.reply(
+            "👑 **Команда видачі VIP НАЗАВЖДИ:**\n\n"
+            "Використання:\n"
+            "`/givevip <Telegram_ID>`\n\n"
+            "Приклад:\n"
+            "`/givevip 123456789`\n\n"
+            "💡 _Щоб дізнатися ID користувачів, напишіть_ `/users`"
+        )
+        return
+
+    try:
+        target_id = int(target_str.strip())
+        user_data = db_grant_lifetime_vip(target_id)
+        
+        await event.reply(
+            f"👑 **VIP НАЗАВЖДИ УСПІШНО ВИДАНО!** ♾\n\n"
+            f"👤 **Користувач ID:** `{target_id}`\n"
+            f"⭐️ **Тариф:** `🌟 VIP Forever (Безліміт)`\n"
+            f"💎 **Баланс генерацій:** `9999 відео`\n"
+            f"📅 **Термін дії:** `Безстроково (назавжди)`"
+        )
+
+        # Try to notify user directly
+        try:
+            congrats_msg = (
+                "🎉 **Вітаємо! Власник бота надав вам VIP-СТАТУС НАЗАВЖДИ!** 👑\n\n"
+                "💎 **Ваші персональні привілеї:**\n"
+                "• ♾ **Повний безліміт на всі генерації**\n"
+                "• 🚀 **Максимальний пріоритет черги обробки**\n"
+                "• 🎬 **Всі преміум-функції: хуки, караоке-субтитри, байти та обкладинки**\n\n"
+                "Приємного користування нашою AI-студією!"
+            )
+            await client.send_message(target_id, congrats_msg)
+        except Exception:
+            pass
+    except Exception as e:
+        await event.reply(f"❌ Помилка видачі VIP: {e}")
+
+
+@client.on(events.NewMessage(pattern=r"^/(?:removevip|delvip)(?:\s+(\d+))?$"))
+async def remove_vip_handler(event):
+    sender = await event.get_sender()
+    sender_id = sender.id if sender else event.sender_id
+
+    if sender_id not in ADMIN_IDS:
+        await event.reply("⛔️ Доступ заборонено.")
+        return
+
+    target_str = event.pattern_match.group(1)
+    if not target_str:
+        await event.reply("Використання: `/removevip <Telegram_ID>`")
+        return
+
+    try:
+        target_id = int(target_str.strip())
+        db_revoke_vip(target_id)
+        await event.reply(f"🗑 **VIP-статус для користувача** `{target_id}` **успішно скасовано.**")
+    except Exception as e:
+        await event.reply(f"❌ Помилка скасування VIP: {e}")
+
+
+@client.on(events.NewMessage(pattern=r"^/(?:users|admin)(?:@\w+)?$"))
+async def admin_users_handler(event):
+    sender = await event.get_sender()
+    sender_id = sender.id if sender else event.sender_id
+
+    if sender_id not in ADMIN_IDS:
+        await event.reply("⛔️ Доступ заборонено.")
+        return
+
+    try:
+        users = db_get_all_users(limit=25)
+        total_cnt = len(users)
+        vip_cnt = sum(1 for u in users if u.get("tier") in ("admin", "vip_forever", "lifetime", "unlimited"))
+        
+        text_lines = [
+            "👑 **Адмін-панель: Користувачі бота**\n",
+            f"👥 Всього користувачів (останні): **{total_cnt}**",
+            f"⭐️ Активних VIP: **{vip_cnt}**\n",
+            "📋 **Список останніх зареєстрованих:**"
+        ]
+
+        for u in users[:15]:
+            uid = u.get("user_id")
+            uname = f"@{u['username']}" if u.get("username") else (u.get("first_name") or f"ID {uid}")
+            tier = u.get("tier", "free")
+            tier_icon = "👑 VIP Forever" if tier in ("vip_forever", "lifetime") else ("⭐️ VIP" if tier in ("unlimited", "admin") else "🆓 Free")
+            bal = u.get("credits_balance", 0)
+            text_lines.append(f"• `{uid}` | {uname} | {tier_icon} | 💎 {bal}")
+
+        text_lines.append("\n💡 _Щоб видати VIP назавжди:_ `/givevip <ID>`")
+        text_lines.append("💡 _Щоб забрати VIP:_ `/removevip <ID>`")
+        await event.reply("\n".join(text_lines))
+    except Exception as e:
+        await event.reply(f"❌ Помилка завантаження списку: {e}")
+
+
 processed_message_ids = set()
+
 
 @client.on(events.NewMessage)
 async def video_message_handler(event):
