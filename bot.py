@@ -991,18 +991,18 @@ async def video_message_handler(event):
     if yt_url:
         guide_text = (
             "📥 **Як змонтувати це YouTube-відео:**\n\n"
-            "Щоб завантажити це відео у найвищій якості (до 1080p) без обмежень, скористайтеся безкоштовним ботом-завантажувачем:\n\n"
+            "Щоб завантажити відео у найвищій якості (до 1080p) без обмежень:\n\n"
             f"1. Скопіюйте посилання: `{yt_url}`\n"
-            "2. Відкрийте бота **@SaveVideoBot** або **@allsaverbot** та скиньте йому це посилання.\n"
+            "2. Натисніть кнопку нижче та надішліть посилання боту **@allsaverbot**\n"
             "3. Перешліть або надішліть отримане відео сюди в чат.\n\n"
             "🎬 **Бот миттєво зробить повний AI-монтаж (Whisper AI ➔ Gemini ➔ караоке-субтитри ➔ байти ➔ обкладинки 9:16)!**"
         )
         buttons = [
-            [Button.url("🚀 Завантажити через @SaveVideoBot", url="https://t.me/SaveVideoBot")],
-            [Button.url("⚡️ Завантажити через @allsaverbot", url="https://t.me/allsaverbot")]
+            [Button.url("🚀 Завантажити відео через @allsaverbot", url="https://t.me/allsaverbot")]
         ]
         await event.reply(guide_text, buttons=buttons, link_preview=False)
         return
+
 
 
 
