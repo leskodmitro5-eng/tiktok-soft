@@ -482,13 +482,13 @@ async def track_video_handler(event):
         await status_msg.edit(f"❌ **Помилка моніторингу:** `{str(e)}`")
 
 
-def format_myviews_view(items: list[dict]) -> tuple[str, list[list[Button]]]:
+def format_myviews_view(items: list[dict]) -> tuple[str, list[list[Button]] | None]:
     if not items:
         return (
             "📊 **У вас ще немає відстежуваних відео.**\n\n"
             "Щоб додати ролик на моніторинг переглядів, надішліть команду:\n"
             "`/track https://youtube.com/shorts/ваш_ролик` або `/track https://vt.tiktok.com/ваш_ролик`",
-            []
+            None
         )
     
     msg = "📊 **Аналітика та перегляди ваших роликів (Live Tracker):**\n\n"
@@ -516,7 +516,7 @@ def format_myviews_view(items: list[dict]) -> tuple[str, list[list[Button]]]:
     msg += "💡 _Натисніть кнопку нижче, щоб видалити ролик або оновити лічильник:_"
     
     buttons.append([Button.inline("🔄 Оновити дані переглядів", data="refresh_views")])
-    return msg, buttons
+    return msg, buttons if buttons else None
 
 
 @client.on(events.NewMessage(pattern=r"^/myviews(?:@\w+)?(?:\s+.*)?$"))
@@ -570,6 +570,7 @@ async def refresh_views_callback_handler(event):
         await event.edit(msg, buttons=buttons, link_preview=False)
     except Exception:
         pass
+
 
 
 @client.on(events.CallbackQuery(pattern=r"^buy_plan:(starter|pro|unlimited):(\d+):(\d+)$"))

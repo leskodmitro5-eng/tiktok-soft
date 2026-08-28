@@ -37,7 +37,8 @@ except Exception:
 
 YOUTUBE_EXTRACTOR_ARGS = {
     "youtube": {
-        "player_client": ["android", "ios", "web_creator", "mweb", "web"]
+        "player_client": ["android", "ios"],
+        "player_skip": ["webpage", "configs"]
     }
 }
 
