@@ -31,13 +31,22 @@ BASE_DIR = Path(__file__).resolve().parent
 COOKIES_FILE = BASE_DIR / "cookies.txt"
 
 # If YOUTUBE_COOKIES is provided via env var, write it to cookies.txt
-cookies_env = os.getenv("YOUTUBE_COOKIES", "").strip()
+cookies_env = os.getenv("YOUTUBE_COOKIES", "").strip().strip('"').strip("'")
 if cookies_env:
     try:
+        # Handle escaped characters from cloud dashboard
+        if "\\n" in cookies_env:
+            cookies_env = cookies_env.replace("\\n", "\n")
+        if "\\t" in cookies_env:
+            cookies_env = cookies_env.replace("\\t", "\t")
+        if not cookies_env.startswith("# Netscape"):
+            cookies_env = "# Netscape HTTP Cookie File\n" + cookies_env
         with open(COOKIES_FILE, "w", encoding="utf-8") as f:
             f.write(cookies_env)
+        logger.info(f"Successfully initialized cookies.txt ({COOKIES_FILE.stat().st_size} bytes)")
     except Exception as e:
         logger.warning(f"Failed to write cookies.txt from environment: {e}")
+
 
 try:
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
