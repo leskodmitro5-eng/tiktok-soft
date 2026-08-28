@@ -27,6 +27,18 @@ def extract_youtube_url(text: str) -> str | None:
     return None
 
 
+BASE_DIR = Path(__file__).resolve().parent
+COOKIES_FILE = BASE_DIR / "cookies.txt"
+
+# If YOUTUBE_COOKIES is provided via env var, write it to cookies.txt
+cookies_env = os.getenv("YOUTUBE_COOKIES", "").strip()
+if cookies_env:
+    try:
+        with open(COOKIES_FILE, "w", encoding="utf-8") as f:
+            f.write(cookies_env)
+    except Exception as e:
+        logger.warning(f"Failed to write cookies.txt from environment: {e}")
+
 try:
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
     ffmpeg_dir = os.path.dirname(ffmpeg_exe)
@@ -51,6 +63,9 @@ def get_youtube_video_info(url: str) -> dict:
         "skip_download": True,
         "extractor_args": YOUTUBE_EXTRACTOR_ARGS,
     }
+    if COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 10:
+        ydl_opts["cookiefile"] = str(COOKIES_FILE)
+
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
         return {
@@ -60,6 +75,7 @@ def get_youtube_video_info(url: str) -> dict:
             "uploader": info.get("uploader", "YouTube"),
             "url": url
         }
+
 
 
 def download_youtube_video(url: str, output_path: str, progress_callback=None) -> str:
@@ -101,6 +117,8 @@ def download_youtube_video(url: str, output_path: str, progress_callback=None) -
         "extractor_args": YOUTUBE_EXTRACTOR_ARGS,
         "progress_hooks": [ydl_hook] if progress_callback else [],
     }
+    if COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 10:
+        ydl_opts["cookiefile"] = str(COOKIES_FILE)
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -174,6 +192,9 @@ def download_youtube_section(url: str, start_sec: float, end_sec: float, output_
         "force_keyframes_at_cuts": True,
         "progress_hooks": [ydl_hook] if progress_callback else [],
     }
+    if COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 10:
+        ydl_opts["cookiefile"] = str(COOKIES_FILE)
+
 
 
     try:

@@ -1011,8 +1011,20 @@ async def video_message_handler(event):
             await status_fetch.edit(prompt_text, buttons=buttons)
             return
         except Exception as yt_err:
-            await status_fetch.edit(f"❌ **Помилка зчитування YouTube відео:**\n`{str(yt_err)}`")
+            err_str = str(yt_err)
+            if "Sign in to confirm" in err_str or "bot" in err_str:
+                help_msg = (
+                    "⚠️ **YouTube заблокував пряме зчитування з датацентру сервера.**\n\n"
+                    "💡 **Як обробити це відео прямо зараз:**\n"
+                    "1. 📥 **Надішліть це відео файлом у Telegram** (відеофайли з комп'ютера чи телефону обробляються на 100% без жодних блокувань!)\n"
+                    "2. 🎵 **Надішліть відео з TikTok** (TikTok працює завжди без обмежень).\n"
+                    "3. 🍪 Або експортуйте cookies YouTube у Netscape форматі та вставте в змінну `YOUTUBE_COOKIES` на Render."
+                )
+                await status_fetch.edit(help_msg)
+            else:
+                await status_fetch.edit(f"❌ **Помилка зчитування YouTube відео:**\n`{err_str}`")
             return
+
 
     # --- 2. Direct Telegram Video ---
     message = event.message
