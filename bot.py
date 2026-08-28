@@ -323,7 +323,9 @@ async def start_handler(event):
         "• `/track <посилання>` — моніторинг переглядів відео в TikTok / Shorts\n"
         "• `/myviews` — аналітика ваших опублікованих роликів\n"
         "• `/stats` — матриця навчання Gemini (1-10)\n\n"
-        "📥 **Надішліть відео файлом або посиланням на YouTube / TikTok, щоб розпочати!**"
+        "📥 **Надішліть відео файлом або посиланням на TikTok, щоб розпочати!**\n"
+        "💡 _(Для YouTube — завантажте ролик ботом-завантажувачем та перешліть файл сюди)_"
+
     )
 
     buttons = [
@@ -867,7 +869,9 @@ async def quick_cmd_handler(event):
                 "🎬 **TikTok Video Processor + Gemini AI Hook & Cutter (Studio v2.0)!**\n\n"
                 f"👤 **Ваш акаунт:** `{sender.first_name or 'Користувач'}`\n"
                 f"💎 **Баланс генерацій:** **{credits_text}**\n\n"
-                "📥 **Надішліть відео файлом або посиланням на YouTube / TikTok, щоб почати!**"
+                "📥 **Надішліть відео файлом або посиланням на TikTok, щоб почати!**\n"
+                "💡 _(Для YouTube — завантажте ролик ботом-завантажувачем та перешліть файл сюди)_"
+
             )
             buttons = [
                 [
@@ -985,45 +989,21 @@ async def video_message_handler(event):
     # --- 1. Check YouTube URL ---
     yt_url = extract_youtube_url(raw_text)
     if yt_url:
-        status_fetch = await event.reply("🔍 **Зчитування інформації про YouTube відео...**")
-        try:
-            loop = asyncio.get_running_loop()
-            yt_info = await loop.run_in_executor(None, get_youtube_video_info, yt_url)
-            title = yt_info.get("title", "YouTube Video")
-            dur = yt_info.get("duration", 0.0)
+        guide_text = (
+            "📥 **Як змонтувати це YouTube-відео:**\n\n"
+            "Щоб завантажити це відео у найвищій якості (до 1080p) без обмежень, скористайтеся безкоштовним ботом-завантажувачем:\n\n"
+            f"1. Скопіюйте посилання: `{yt_url}`\n"
+            "2. Відкрийте бота **@SaveVideoBot** або **@allsaverbot** та скиньте йому це посилання.\n"
+            "3. Перешліть або надішліть отримане відео сюди в чат.\n\n"
+            "🎬 **Бот миттєво зробить повний AI-монтаж (Whisper AI ➔ Gemini ➔ караоке-субтитри ➔ байти ➔ обкладинки 9:16)!**"
+        )
+        buttons = [
+            [Button.url("🚀 Завантажити через @SaveVideoBot", url="https://t.me/SaveVideoBot")],
+            [Button.url("⚡️ Завантажити через @allsaverbot", url="https://t.me/allsaverbot")]
+        ]
+        await event.reply(guide_text, buttons=buttons, link_preview=False)
+        return
 
-            job_id = str(uuid.uuid4())[:8]
-            pending_jobs[job_id] = {
-                "type": "youtube",
-                "url": yt_url,
-                "title": title,
-                "chat_id": event.chat_id,
-                "file_name": f"youtube_{yt_info.get('id', job_id)}.mp4",
-                "approx_duration": dur
-            }
-
-            logger.info(f"Received YouTube link: {yt_url}. Job ID: {job_id}, Duration: {dur}s")
-
-            init_hook = (dur <= 180.0)
-            buttons = build_mode_selection_keyboard(job_id, hook=init_hook, banner=True, bait=True, subs=True, target_platform="tiktok")
-            prompt_text = format_control_panel_text(pending_jobs[job_id], target_platform="tiktok", hook=init_hook, banner=True, bait=True, subs=True)
-
-            await status_fetch.edit(prompt_text, buttons=buttons)
-            return
-        except Exception as yt_err:
-            err_str = str(yt_err)
-            if "Sign in to confirm" in err_str or "bot" in err_str:
-                help_msg = (
-                    "⚠️ **YouTube заблокував пряме зчитування з датацентру сервера.**\n\n"
-                    "💡 **Як обробити це відео прямо зараз:**\n"
-                    "1. 📥 **Надішліть це відео файлом у Telegram** (відеофайли з комп'ютера чи телефону обробляються на 100% без жодних блокувань!)\n"
-                    "2. 🎵 **Надішліть відео з TikTok** (TikTok працює завжди без обмежень).\n"
-                    "3. 🍪 Або експортуйте cookies YouTube у Netscape форматі та вставте в змінну `YOUTUBE_COOKIES` на Render."
-                )
-                await status_fetch.edit(help_msg)
-            else:
-                await status_fetch.edit(f"❌ **Помилка зчитування YouTube відео:**\n`{err_str}`")
-            return
 
 
     # --- 2. Direct Telegram Video ---
