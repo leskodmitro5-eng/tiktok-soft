@@ -77,22 +77,44 @@ def build_youtube_ydl_opts(custom_opts: dict = None) -> dict:
 
 
 def get_youtube_video_info(url: str) -> dict:
-    """Extracts metadata for a YouTube video without downloading the stream."""
-    ydl_opts = build_youtube_ydl_opts({
-        "skip_download": True,
-        "check_formats": False,
-        "format": "bestvideo+bestaudio/best",
-    })
+    """Extracts metadata for a YouTube video without downloading the stream with multi-fallback support."""
+    client_candidates = [
+        ["web", "android", "ios", "mweb"] if (COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 10) else ["android", "ios", "web"],
+        ["android"],
+        ["ios"],
+        ["web"],
+        ["mweb"]
+    ]
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
-        return {
-            "id": info.get("id", ""),
-            "title": info.get("title", "YouTube Video"),
-            "duration": float(info.get("duration", 0.0) or 0.0),
-            "uploader": info.get("uploader", "YouTube"),
-            "url": url
-        }
+    last_err = None
+    for clients in client_candidates:
+        ydl_opts = build_youtube_ydl_opts({
+            "skip_download": True,
+            "check_formats": False,
+            "format": "bestvideo+bestaudio/best",
+            "extractor_args": {
+                "youtube": {
+                    "player_client": clients
+                }
+            }
+        })
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                if info:
+                    return {
+                        "id": info.get("id", ""),
+                        "title": info.get("title", "YouTube Video"),
+                        "duration": float(info.get("duration", 0.0) or 0.0),
+                        "uploader": info.get("uploader", "YouTube"),
+                        "url": url
+                    }
+        except Exception as e:
+            last_err = e
+            logger.debug(f"Failed extracting with clients {clients}: {e}")
+
+    raise last_err or ValueError(f"Could not extract video info for {url}")
+
 
 
 
