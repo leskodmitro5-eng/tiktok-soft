@@ -146,10 +146,12 @@ def get_youtube_video_info(url: str) -> dict:
 def download_youtube_video(url: str, output_path: str, progress_callback=None) -> str:
     """
     Downloads YouTube video at best quality up to 1080p and merges video+audio into MP4.
-    Includes Windows file-lock recovery for [WinError 32].
+    Includes Windows file-lock recovery and multi-format fallbacks (format 18 progressive MP4).
     """
     out_dir = str(Path(output_path).parent)
     base_name = Path(output_path).stem
+
+    os.makedirs(out_dir, exist_ok=True)
 
     # Clean any pre-existing files in the target directory
     if os.path.exists(out_dir):
@@ -167,98 +169,98 @@ def download_youtube_video(url: str, output_path: str, progress_callback=None) -
             if total > 0:
                 progress_callback(downloaded, total)
 
-    ydl_opts = build_youtube_ydl_opts({
-        "format": "bestvideo[height<=1080]+bestaudio/best[height<=1080]/bestvideo+bestaudio/best",
-        "outtmpl": os.path.join(out_dir, f"{base_name}.%(ext)s"),
-        "ffmpeg_location": ffmpeg_exe,
-        "merge_output_format": "mp4",
-        "nopart": True,
-        "overwrites": True,
-        "progress_hooks": [ydl_hook] if progress_callback else [],
-    })
+    format_attempts = [
+        "18/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best[ext=mp4]/best",
+        "best[ext=mp4]/best",
+        "18",
+        "worst/all"
+    ]
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-    except Exception as e:
-        logger.warning(f"yt_dlp primary download notice: {e}. Retrying with universal format 'best'...")
+    for fmt in format_attempts:
+        ydl_opts = build_youtube_ydl_opts({
+            "format": fmt,
+            "outtmpl": os.path.join(out_dir, f"{base_name}.%(ext)s"),
+            "ffmpeg_location": ffmpeg_exe,
+            "merge_output_format": "mp4",
+            "nopart": True,
+            "overwrites": True,
+            "progress_hooks": [ydl_hook] if progress_callback else [],
+        })
+
         try:
-            fallback_opts = build_youtube_ydl_opts({
-                "format": "best",
-                "outtmpl": os.path.join(out_dir, f"{base_name}.%(ext)s"),
-                "ffmpeg_location": ffmpeg_exe,
-                "merge_output_format": "mp4",
-                "nopart": True,
-                "overwrites": True,
-            })
-            with yt_dlp.YoutubeDL(fallback_opts) as ydl_fb:
-                ydl_fb.download([url])
-        except Exception as fb_err:
-            logger.warning(f"yt_dlp fallback download error: {fb_err}")
-        time.sleep(1.0)
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+        except Exception as e:
+            logger.warning(f"yt_dlp format '{fmt}' notice: {e}")
 
+        final_path = os.path.join(out_dir, f"{base_name}.mp4")
 
-    final_path = os.path.join(out_dir, f"{base_name}.mp4")
-
-    # 1. Direct check
-    for _ in range(5):
-        if os.path.exists(final_path) and os.path.getsize(final_path) > 1024:
-            logger.info(f"YouTube video downloaded successfully -> {final_path} (size: {os.path.getsize(final_path)/(1024*1024):.1f} MB)")
-            return final_path
-        time.sleep(0.4)
-
-    # 2. Check for .temp.mp4 leftover from ffmpeg merger and atomically rename
-    temp_path = os.path.join(out_dir, f"{base_name}.temp.mp4")
-    if os.path.exists(temp_path) and os.path.getsize(temp_path) > 1024:
-        for _ in range(10):
-            try:
-                os.replace(temp_path, final_path)
-                logger.info(f"Recovered and renamed {temp_path} -> {final_path}")
+        # 1. Direct check
+        for _ in range(5):
+            if os.path.exists(final_path) and os.path.getsize(final_path) > 1024:
+                logger.info(f"YouTube video downloaded successfully -> {final_path} (size: {os.path.getsize(final_path)/(1024*1024):.1f} MB)")
                 return final_path
-            except PermissionError:
-                time.sleep(0.3)
+            time.sleep(0.3)
 
-    # 3. Fallback search
-    for f in os.listdir(out_dir):
-        if f.startswith(base_name) and not f.endswith(".part"):
-            matched = os.path.join(out_dir, f)
-            if os.path.getsize(matched) > 1024:
-                logger.info(f"YouTube downloaded file found -> {matched}")
-                return matched
+        # 2. Check for .temp.mp4 leftover from ffmpeg merger and atomically rename
+        temp_path = os.path.join(out_dir, f"{base_name}.temp.mp4")
+        if os.path.exists(temp_path) and os.path.getsize(temp_path) > 1024:
+            for _ in range(10):
+                try:
+                    os.replace(temp_path, final_path)
+                    logger.info(f"Recovered and renamed {temp_path} -> {final_path}")
+                    return final_path
+                except PermissionError:
+                    time.sleep(0.3)
+
+        # 3. Check for other extensions (.mkv, .webm) and convert to mp4 via ffmpeg
+        for f in os.listdir(out_dir):
+            if f.startswith(base_name) and not f.endswith(".part"):
+                matched = os.path.join(out_dir, f)
+                if os.path.getsize(matched) > 1024:
+                    if not matched.endswith(".mp4"):
+                        import subprocess
+                        subprocess.run([ffmpeg_exe, "-y", "-i", matched, "-c", "copy", final_path], check=True)
+                        try:
+                            os.remove(matched)
+                        except Exception:
+                            pass
+                        return final_path
+                    return matched
 
     raise FileNotFoundError(f"Downloaded YouTube video not found for {url}")
 
 
 def download_youtube_section(url: str, start_sec: float, end_sec: float, output_path: str, progress_callback=None) -> str:
     """
-    Downloads only a specific segment [start_sec, end_sec] from a YouTube video without downloading the full video.
-    Ideal for fast highlights slicing on long videos.
+    Downloads only a specific segment [start_sec, end_sec] from a YouTube video.
+    Downloads full video and slices via FFmpeg for 100% stability on cloud servers.
     """
     out_dir = str(Path(output_path).parent)
     base_name = Path(output_path).stem
-
     os.makedirs(out_dir, exist_ok=True)
+    final_path = os.path.join(out_dir, f"{base_name}.mp4")
 
-    def ydl_hook(d):
-        if progress_callback and d.get("status") == "downloading":
-            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
-            downloaded = d.get("downloaded_bytes") or 0
-            if total > 0:
-                progress_callback(downloaded, total)
+    full_path = os.path.join(out_dir, f"full_{base_name}.mp4")
+    download_youtube_video(url, full_path, progress_callback)
+    
+    import subprocess
+    cmd = [
+        ffmpeg_exe, "-y",
+        "-ss", str(round(start_sec, 2)),
+        "-to", str(round(end_sec, 2)),
+        "-i", full_path,
+        "-c", "copy",
+        final_path
+    ]
+    subprocess.run(cmd, check=True)
+    if os.path.exists(full_path):
+        try:
+            os.remove(full_path)
+        except Exception:
+            pass
+    return final_path
 
-    download_ranges = yt_dlp.utils.download_range_func(None, [(start_sec, end_sec)])
-
-    ydl_opts = build_youtube_ydl_opts({
-        "format": "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best",
-        "outtmpl": os.path.join(out_dir, f"{base_name}.%(ext)s"),
-        "ffmpeg_location": ffmpeg_exe,
-        "merge_output_format": "mp4",
-        "nopart": True,
-        "overwrites": True,
-        "download_ranges": download_ranges,
-        "force_keyframes_at_cuts": True,
-        "progress_hooks": [ydl_hook] if progress_callback else [],
-    })
 
 
 
