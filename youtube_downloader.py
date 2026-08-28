@@ -63,25 +63,15 @@ def build_youtube_ydl_opts(custom_opts: dict = None) -> dict:
         "windowsfilenames": True,
         "retries": 10,
         "fragment_retries": 10,
-        "format": "bestvideo[height<=1080]+bestaudio/best[height<=1080]/bestvideo+bestaudio/best",
+        "format": "18/best[ext=mp4]/best",
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "ios"]
+            }
+        }
     }
     if custom_opts:
         opts.update(custom_opts)
-
-    has_cookies = COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 10
-    if has_cookies:
-        opts["cookiefile"] = str(COOKIES_FILE)
-        opts["extractor_args"] = {
-            "youtube": {
-                "player_client": ["web", "android", "ios", "mweb"]
-            }
-        }
-    else:
-        opts["extractor_args"] = {
-            "youtube": {
-                "player_client": ["android", "ios", "web"]
-            }
-        }
     return opts
 
 
@@ -89,10 +79,9 @@ def get_youtube_video_info(url: str) -> dict:
     """Extracts metadata for a YouTube video without downloading or format evaluation, with oEmbed fallback."""
     # 1. Primary: yt-dlp with process=False (extracts raw JSON without evaluating format requirements)
     client_candidates = [
-        ["web", "android", "ios", "mweb"] if (COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 10) else ["android", "ios", "web"],
+        ["android", "ios"],
         ["android"],
-        ["ios"],
-        ["web"]
+        ["ios"]
     ]
 
     for clients in client_candidates:
@@ -178,66 +167,68 @@ def download_youtube_video(url: str, output_path: str, progress_callback=None) -
             if total > 0:
                 progress_callback(downloaded, total)
 
-    format_attempts = [
-        "18/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best[ext=mp4]/best",
-        "best[ext=mp4]/best",
-        "18",
-        "worst/all"
-    ]
+    ydl_opts = {
+        "format": "18/best[ext=mp4]/best",
+        "outtmpl": os.path.join(out_dir, f"{base_name}.%(ext)s"),
+        "ffmpeg_location": ffmpeg_exe,
+        "merge_output_format": "mp4",
+        "quiet": True,
+        "no_warnings": True,
+        "nopart": True,
+        "overwrites": True,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "ios"]
+            }
+        },
+        "progress_hooks": [ydl_hook] if progress_callback else [],
+    }
 
-    for fmt in format_attempts:
-        ydl_opts = build_youtube_ydl_opts({
-            "format": fmt,
-            "outtmpl": os.path.join(out_dir, f"{base_name}.%(ext)s"),
-            "ffmpeg_location": ffmpeg_exe,
-            "merge_output_format": "mp4",
-            "nopart": True,
-            "overwrites": True,
-            "progress_hooks": [ydl_hook] if progress_callback else [],
-        })
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+    except Exception as e:
+        logger.warning(f"yt_dlp primary download notice: {e}")
 
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-        except Exception as e:
-            logger.warning(f"yt_dlp format '{fmt}' notice: {e}")
+    final_path = os.path.join(out_dir, f"{base_name}.mp4")
 
-        final_path = os.path.join(out_dir, f"{base_name}.mp4")
+    # 1. Direct check
+    for _ in range(5):
+        if os.path.exists(final_path) and os.path.getsize(final_path) > 1024:
+            logger.info(f"YouTube video downloaded successfully -> {final_path} (size: {os.path.getsize(final_path)/(1024*1024):.1f} MB)")
+            return final_path
+        time.sleep(0.3)
 
-        # 1. Direct check
-        for _ in range(5):
-            if os.path.exists(final_path) and os.path.getsize(final_path) > 1024:
-                logger.info(f"YouTube video downloaded successfully -> {final_path} (size: {os.path.getsize(final_path)/(1024*1024):.1f} MB)")
-                return final_path
-            time.sleep(0.3)
-
-        # 2. Check for .temp.mp4 leftover from ffmpeg merger and atomically rename
-        temp_path = os.path.join(out_dir, f"{base_name}.temp.mp4")
-        if os.path.exists(temp_path) and os.path.getsize(temp_path) > 1024:
-            for _ in range(10):
-                try:
-                    os.replace(temp_path, final_path)
-                    logger.info(f"Recovered and renamed {temp_path} -> {final_path}")
+    # 2. Check for other extensions (.mkv, .webm) and convert to mp4 via ffmpeg
+    for f in os.listdir(out_dir):
+        if f.startswith(base_name) and not f.endswith(".part"):
+            matched = os.path.join(out_dir, f)
+            if os.path.getsize(matched) > 1024:
+                if not matched.endswith(".mp4"):
+                    import subprocess
+                    subprocess.run([ffmpeg_exe, "-y", "-i", matched, "-c", "copy", final_path], check=True)
+                    try:
+                        os.remove(matched)
+                    except Exception:
+                        pass
                     return final_path
-                except PermissionError:
-                    time.sleep(0.3)
+                return matched
 
-        # 3. Check for other extensions (.mkv, .webm) and convert to mp4 via ffmpeg
-        for f in os.listdir(out_dir):
-            if f.startswith(base_name) and not f.endswith(".part"):
-                matched = os.path.join(out_dir, f)
-                if os.path.getsize(matched) > 1024:
-                    if not matched.endswith(".mp4"):
-                        import subprocess
-                        subprocess.run([ffmpeg_exe, "-y", "-i", matched, "-c", "copy", final_path], check=True)
-                        try:
-                            os.remove(matched)
-                        except Exception:
-                            pass
-                        return final_path
-                    return matched
+    # 3. Secondary fallback: pytubefix
+    try:
+        from pytubefix import YouTube as PytubeYT
+        yt_obj = PytubeYT(url, client='MWEB')
+        st = yt_obj.streams.filter(progressive=True, file_extension='mp4').first() or yt_obj.streams.get_highest_resolution()
+        if st:
+            st.download(output_path=out_dir, filename=f"{base_name}.mp4")
+            if os.path.exists(final_path) and os.path.getsize(final_path) > 1024:
+                logger.info(f"Pytubefix downloaded -> {final_path}")
+                return final_path
+    except Exception as py_err:
+        logger.warning(f"Pytubefix fallback notice: {py_err}")
 
     raise FileNotFoundError(f"Downloaded YouTube video not found for {url}")
+
 
 
 def download_youtube_section(url: str, start_sec: float, end_sec: float, output_path: str, progress_callback=None) -> str:
