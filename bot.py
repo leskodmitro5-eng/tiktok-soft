@@ -327,9 +327,7 @@ async def start_handler(event):
         "• `/track <посилання>` — моніторинг переглядів відео в TikTok / Shorts\n"
         "• `/myviews` — аналітика ваших опублікованих роликів\n"
         "• `/stats` — матриця навчання Gemini (1-10)\n\n"
-        "📥 **Надішліть відео файлом або посиланням на TikTok, щоб розпочати!**\n"
-        "💡 _(Для YouTube — завантажте ролик ботом-завантажувачем та перешліть файл сюди)_"
-
+        "📥 **Надішліть відео файлом або посиланням на YouTube чи TikTok, щоб розпочати!**\n\n"
     )
 
     buttons = [
@@ -700,26 +698,42 @@ async def generate_thumb_callback_handler(event):
 
     import tempfile
 
-    meta = completed_clips_meta.get(clip_job_id)
-    if not meta or not meta.get("video_file_path"):
-        await event.answer("⚠️ Відео застаріло або видалено.", alert=True)
-        return
-
-    video_path = meta["video_file_path"]
-    is_remote = video_path.startswith("http://") or video_path.startswith("https://")
-
-    if not is_remote and not os.path.exists(video_path):
-        await event.answer("⚠️ Відео застаріло або видалено з кешу.", alert=True)
-        return
-
     await event.answer("🖼 Створюю клікбейт-обкладинку 9:16...", alert=False)
     status_msg = await event.respond("🎨 **Генерація високоефективної обкладинки (Pillow HD)...**")
 
+    temp_dir = Path(tempfile.gettempdir())
+    thumb_out = str(temp_dir / f"thumb_{clip_job_id}.jpg")
+    temp_downloaded_video = None
+
     try:
-        # Create a safe temp path for the thumbnail in the system temp directory
-        temp_dir = Path(tempfile.gettempdir())
-        thumb_out = str(temp_dir / f"thumb_{clip_job_id}.jpg")
-        title = meta.get("title") or "ЭПИЧНЫЙ МОМЕНТ 🔥"
+        meta = completed_clips_meta.get(clip_job_id)
+        video_path = meta.get("video_file_path") if meta else None
+        title = meta.get("title") if meta else None
+
+        need_download = False
+        if not video_path:
+            need_download = True
+        elif not (video_path.startswith("http://") or video_path.startswith("https://")) and not os.path.exists(video_path):
+            need_download = True
+
+        if need_download:
+            msg = await event.get_message()
+            if not msg or not msg.media:
+                await status_msg.edit("⚠️ Не вдалося отримати відео з повідомлення.")
+                return
+            
+            temp_downloaded_video = temp_dir / f"temp_thumb_vid_{clip_job_id}.mp4"
+            await client.download_media(msg.media, file=str(temp_downloaded_video))
+            video_path = str(temp_downloaded_video)
+            
+            if not title and (msg.text or msg.message):
+                for line in (msg.text or msg.message).split("\n"):
+                    if "Нарізка" in line or "ЕПИЧНЫЙ" in line or "Title" in line or "Відео" in line:
+                        title = line.replace("*", "").replace("#", "").strip()
+                        break
+
+        if not title:
+            title = "ЭПИЧНЫЙ МОМЕНТ 🔥"
         
         loop = asyncio.get_running_loop()
         res_thumb = await loop.run_in_executor(
@@ -739,15 +753,23 @@ async def generate_thumb_callback_handler(event):
                 caption=f"🖼 **Клікбейтна обкладинка 9:16 готова!**\n\n📌 **Заголовок:** _{title}_\n💡 _Використовуйте як перший кадр або обкладинку в TikTok / Shorts!_"
             )
             await status_msg.delete()
-            try:
-                os.remove(res_thumb)
-            except Exception:
-                pass
         else:
             await status_msg.edit("❌ Не вдалося створити обкладинку.")
     except Exception as err:
         logger.error(f"Error generating thumbnail: {err}")
         await status_msg.edit(f"❌ Помилка: {err}")
+    finally:
+        if os.path.exists(thumb_out):
+            try:
+                os.remove(thumb_out)
+            except Exception:
+                pass
+        if temp_downloaded_video and os.path.exists(temp_downloaded_video):
+            try:
+                os.remove(temp_downloaded_video)
+            except Exception:
+                pass
+
 
 
 @client.on(events.CallbackQuery(pattern=r"^track_prompt:([a-zA-Z0-9_-]+)$"))
@@ -938,9 +960,7 @@ async def quick_cmd_handler(event):
                 "🎬 **TikTok Video Processor + Gemini AI Hook & Cutter (Studio v2.0)!**\n\n"
                 f"👤 **Ваш акаунт:** `{sender.first_name or 'Користувач'}`\n"
                 f"💎 **Баланс генерацій:** **{credits_text}**\n\n"
-                "📥 **Надішліть відео файлом або посиланням на TikTok, щоб почати!**\n"
-                "💡 _(Для YouTube — завантажте ролик ботом-завантажувачем та перешліть файл сюди)_"
-
+                "📥 **Надішліть відео файлом або посиланням на YouTube чи TikTok, щоб почати!**\n\n"
             )
             buttons = [
                 [
@@ -1167,19 +1187,37 @@ async def video_message_handler(event):
     # --- 1. Check YouTube URL ---
     yt_url = extract_youtube_url(raw_text)
     if yt_url:
-        guide_text = (
-            "📥 **Як змонтувати це YouTube-відео:**\n\n"
-            "Щоб завантажити відео у найвищій якості (до 1080p) без обмежень:\n\n"
-            f"1. Скопіюйте посилання: `{yt_url}`\n"
-            "2. Натисніть кнопку нижче та надішліть посилання боту **@allsaverbot**\n"
-            "3. Перешліть або надішліть отримане відео сюди в чат.\n\n"
-            "🎬 **Бот миттєво зробить повний AI-монтаж (Whisper AI ➔ Gemini ➔ караоке-субтитри ➔ байти ➔ обкладинки 9:16)!**"
-        )
-        buttons = [
-            [Button.url("🚀 Завантажити відео через @allsaverbot", url="https://t.me/allsaverbot")]
-        ]
-        await event.reply(guide_text, buttons=buttons, link_preview=False)
-        return
+        status_fetch = await event.reply("🔍 **Зчитування інформації про YouTube відео...**")
+        try:
+            loop = asyncio.get_running_loop()
+            yt_info = await loop.run_in_executor(None, get_youtube_video_info, yt_url)
+            if not yt_info:
+                raise ValueError("Не вдалося отримати інформацію про YouTube відео.")
+            
+            title = yt_info.get("title", "YouTube Video")
+            dur = yt_info.get("duration", 0.0)
+
+            job_id = str(uuid.uuid4())[:8]
+            pending_jobs[job_id] = {
+                "type": "youtube",
+                "url": yt_url,
+                "title": title,
+                "chat_id": event.chat_id,
+                "file_name": f"youtube_{yt_info.get('id', job_id)}.mp4",
+                "approx_duration": dur
+            }
+
+            logger.info(f"Received YouTube link: {yt_url}. Job ID: {job_id}, Duration: {dur}s")
+
+            init_hook = (dur <= 180.0)
+            buttons = build_mode_selection_keyboard(job_id, hook=init_hook, banner=True, bait=True, subs=True, target_platform="tiktok")
+            prompt_text = format_control_panel_text(pending_jobs[job_id], target_platform="tiktok", hook=init_hook, banner=True, bait=True, subs=True)
+
+            await status_fetch.edit(prompt_text, buttons=buttons)
+            return
+        except Exception as yt_err:
+            await status_fetch.edit(f"❌ **Помилка зчитування YouTube відео:**\n`{str(yt_err)}`")
+            return
 
 
 
@@ -1892,7 +1930,14 @@ async def post_to_channel_handler(event):
 
     clip_job_id = event.pattern_match.group(1)
     meta = completed_clips_meta.get(clip_job_id)
-    if not meta or not meta.get("media"):
+    media = meta.get("media") if meta else None
+    
+    if not media:
+        msg = await event.get_message()
+        if msg and msg.media:
+            media = msg.media
+
+    if not media:
         await event.answer("⚠️ Медіа застаріло або недоступне.", alert=True)
         return
 
