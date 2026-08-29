@@ -45,7 +45,7 @@ def detect_best_h264_encoder() -> list[str]:
         ("h264_qsv (Intel QuickSync)", ["-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "19"]),
         ("h264_amf (AMD GPU)", ["-c:v", "h264_amf", "-quality", "speed", "-rc", "cqp", "-qp_i", "19", "-qp_p", "19"]),
         ("h264_mf (Windows MediaFoundation)", ["-c:v", "h264_mf", "-b:v", "6500k"]),
-        ("libx264 (CPU Software)", ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18"])
+        ("libx264 (CPU Software)", ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-threads", "0"])
     ]
 
     for name, flags in candidates:
@@ -59,7 +59,7 @@ def detect_best_h264_encoder() -> list[str]:
         except Exception:
             pass
 
-    _CACHED_ENCODER_FLAGS = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18"]
+    _CACHED_ENCODER_FLAGS = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-threads", "0"]
     logger.info("Using default software CPU encoder libx264")
     return _CACHED_ENCODER_FLAGS
 
