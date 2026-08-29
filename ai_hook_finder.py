@@ -171,11 +171,10 @@ Respond ONLY with a JSON object in this exact schema:
 
     data = {}
     models_to_try = [
-        "gemini-3.6-flash",
         "gemini-3.5-flash",
         "gemini-3.5-flash-lite",
-        "gemini-3.7-flash",
-        "gemini-flash-latest"
+        "gemini-flash-latest",
+        "gemini-3.6-flash"
     ]
     for model_name in models_to_try:
         try:

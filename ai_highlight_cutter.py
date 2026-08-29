@@ -218,11 +218,10 @@ Below is the history of the user's ratings for HIGHLIGHTS and HOOKS. LEARN FROM 
     client = genai.Client(api_key=gemini_api_key)
     highlights = []
     models_to_try = [
-        "gemini-3.6-flash",
         "gemini-3.5-flash",
         "gemini-3.5-flash-lite",
-        "gemini-3.7-flash",
-        "gemini-flash-latest"
+        "gemini-flash-latest",
+        "gemini-3.6-flash"
     ]
     for model_name in models_to_try:
         try:
