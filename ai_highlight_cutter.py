@@ -216,19 +216,35 @@ Below is the history of the user's ratings for HIGHLIGHTS and HOOKS. LEARN FROM 
 """
 
     client = genai.Client(api_key=gemini_api_key)
-    try:
-        response = client.models.generate_content(
-            model="gemini-3.6-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                system_instruction=f"You are an elite viral video editor and content producer for {target_platform}, calibrated to the user's grading matrix and CTA rules. Always respond in valid JSON matching the requested schema.",
-                temperature=0.3
+    highlights = []
+    models_to_try = [
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.7-flash",
+        "gemini-flash-latest"
+    ]
+    for model_name in models_to_try:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    system_instruction=f"You are an elite viral video editor and content producer for {target_platform}, calibrated to the user's grading matrix and CTA rules. Always respond in valid JSON matching the requested schema.",
+                    temperature=0.3
+                )
             )
-        )
-        data = json.loads(response.text)
-        highlights = data.get("highlights", [])
-        
+            data = json.loads(response.text)
+            highlights = data.get("highlights", [])
+            if highlights:
+                logger.info(f"Successfully generated {len(highlights)} highlights using model '{model_name}'")
+                break
+        except Exception as e:
+            logger.warning(f"Highlight cutter model {model_name} failed: {e}")
+            continue
+
+    if highlights:
         valid_highlights = []
         for i, h in enumerate(highlights, 1):
             s_t = float(h.get("start_time", h.get("start", 0.0)))
@@ -237,7 +253,7 @@ Below is the history of the user's ratings for HIGHLIGHTS and HOOKS. LEARN FROM 
             e_t = min(total_duration, e_t)
             if e_t - s_t < 15.0:
                 e_t = min(total_duration, s_t + 35.0)
-            
+
             h_start = float(h.get("hook_start", s_t))
             h_end = float(h.get("hook_end", h_start + 2.5))
             if h_start < s_t or h_start >= e_t:
@@ -278,9 +294,6 @@ Below is the history of the user's ratings for HIGHLIGHTS and HOOKS. LEARN FROM 
         if valid_highlights:
             logger.info(f"Gemini successfully selected {len(valid_highlights)} highlights for {target_platform}.")
             return valid_highlights
-
-    except Exception as e:
-        logger.warning(f"Gemini highlight detection error: {e}. Using intelligent fallback partition.")
 
     # Fallback partition
     fallback_clips = []

@@ -64,6 +64,13 @@ def get_db_connection():
             conn.close()
 
 
+def _clean_str(val) -> str:
+    """Ensures input is a clean Python string to avoid psycopg2 bytea type mismatches."""
+    if isinstance(val, bytes):
+        return val.decode("utf-8", errors="ignore")
+    return str(val) if val is not None else ""
+
+
 def q(query: str) -> str:
     """Adapts placeholders from SQLite (?) to PostgreSQL (%s) if running on Postgres."""
     if IS_POSTGRES:
@@ -857,6 +864,7 @@ def db_save_hook_decision(job_id: str, segments: list[dict], hook_info: dict) ->
 
 def db_record_hook_rating(job_id: str, rating: int) -> dict | None:
     """Records user rating (1-10) for a hook."""
+    job_id = _clean_str(job_id)
     rating = max(1, min(10, int(rating)))
     now_str = datetime.now().isoformat()
     with get_db_connection() as conn:
@@ -1027,6 +1035,7 @@ def db_save_highlight_decision(clip_job_id: str, highlight_info: dict, segments:
 
 def db_record_highlight_rating(clip_job_id: str, rating: int) -> dict | None:
     """Records user rating (1-10) for a highlight clip."""
+    clip_job_id = _clean_str(clip_job_id)
     rating = max(1, min(10, int(rating)))
     now_str = datetime.now().isoformat()
     with get_db_connection() as conn:

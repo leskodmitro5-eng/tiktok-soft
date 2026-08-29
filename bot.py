@@ -783,11 +783,17 @@ async def track_prompt_callback_handler(event):
     )
 
 
+def _clean_str(val) -> str:
+    if isinstance(val, bytes):
+        return val.decode("utf-8", errors="ignore")
+    return str(val) if val is not None else ""
+
+
 @client.on(events.CallbackQuery(pattern=r"^rate:([a-zA-Z0-9_-]+):(\d+)$"))
 async def rate_clip_callback_handler(event):
     sender = await event.get_sender()
     sender_id = sender.id if sender else event.sender_id
-    clip_job_id = event.pattern_match.group(1)
+    clip_job_id = _clean_str(event.pattern_match.group(1))
     rating = int(event.pattern_match.group(2))
 
     # Save to global AI memory database (hooks & highlights in Supabase)
@@ -1542,13 +1548,49 @@ async def execute_video_job(task_info: dict, worker_id: int):
                 await slice_raw_segment_async(str(input_path), h["start"], h["end"], str(clip_raw_path))
                 save_highlight_decision(clip_job_id, h, segments)
 
-                seo_prompt_ctx = f"Highlight: {h.get('title', '')}. Summary: {h.get('reason', '')}"
+                # Extract speech dialogue specifically within this highlight's timeframe
+                clip_words = [
+                    s["text"] for s in (segments or [])
+                    if s.get("text") and (
+                        (h["start"] <= s.get("start", 0) <= h["end"]) or
+                        (h["start"] <= s.get("end", 0) <= h["end"]) or
+                        (s.get("start", 0) <= h["start"] and s.get("end", 0) >= h["end"])
+                    )
+                ]
+                clip_transcript = " ".join(clip_words).strip()
+                source_title = job_data.get("title") or job_data.get("file_name", "Video")
+
+                seo_prompt_ctx = (
+                    f"Clip #{idx} of {len(highlights)}\n"
+                    f"Source Video: {source_title}\n"
+                    f"Highlight Focus: {h.get('title', '')}\n"
+                    f"Emotional Climax: {h.get('reason', '')}\n"
+                    f"Speech Dialogue in this clip:\n\"{clip_transcript}\""
+                )
                 seo_data = await loop.run_in_executor(
                     None,
                     generate_viral_seo_meta,
                     seo_prompt_ctx,
                     target_platform,
-                    GEMINI_API_KEY
+                    GEMINI_API_KEY,
+                    idx,
+                    len(highlights)
+                )
+
+                # Pre-generate viral clickbait thumbnail for this slice
+                clip_thumb_path = job_dir / f"thumb_{idx}_{clip_job_id}.jpg"
+                thumb_title = seo_data.get("viral_title", h.get("title", "ЭПИЧНЫЙ МОМЕНТ 🔥"))
+                thumb_badge = seo_data.get("thumbnail_badge", "🔥 ШОК-КОНТЕНТ")
+                best_thumb_ts = max(0.5, (h.get("hook_start", h["start"]) - h["start"]) + 0.8)
+
+                await loop.run_in_executor(
+                    None,
+                    generate_viral_thumbnail,
+                    str(clip_raw_path),
+                    str(clip_thumb_path),
+                    thumb_title,
+                    best_thumb_ts,
+                    thumb_badge
                 )
 
                 res = await process_video_pipeline_async(
@@ -1634,7 +1676,7 @@ async def execute_video_job(task_info: dict, worker_id: int):
                 score_info = f"🔥 **Viral Score:** `{h.get('viral_coefficient', 9.0)}/10` (Visual: `{h.get('visual_action_score', 8)}/10`, Audio: `{h.get('audio_emotion_score', 8)}/10`)\n" if h.get("viral_coefficient") else ""
 
                 clip_caption = (
-                    f"🎬 **{platform_label} Нарізка [{idx}/{len(highlights)}]: {h['title']}**\n\n"
+                    f"🎬 **{platform_label} Нарізка [{idx}/{len(highlights)}]: {seo_data.get('viral_title', h['title'])}**\n\n"
                     f"⏱ **Хронометраж в оригіналі:** `{h['start']:.1f}s — {h['end']:.1f}s` (кліп: `{res['final_duration']:.1f}с`)\n"
                     f"{score_info}"
                     f"💡 **Чому обрано:** {h['reason']}\n\n"
@@ -1679,9 +1721,10 @@ async def execute_video_job(task_info: dict, worker_id: int):
                 completed_clips_meta[clip_job_id] = {
                     "media": sent_video.media,
                     "video_file_path": video_url_or_path,
+                    "thumbnail_path": str(clip_thumb_path) if clip_thumb_path.exists() else None,
                     "seo_data": seo_data,
                     "target_platform": target_platform,
-                    "title": h.get("title", "")
+                    "title": seo_data.get("viral_title", h.get("title", ""))
                 }
 
                 await sent_video.reply(format_seo_telegram_block(seo_data, target_platform))
@@ -1734,13 +1777,39 @@ async def execute_video_job(task_info: dict, worker_id: int):
             vc = hook.get("viral_coefficient")
             single_score_info = f"🔥 **Viral Score:** `{vc}/10` (Visual: `{hook.get('visual_action_score', 8)}/10`, Audio: `{hook.get('audio_emotion_score', 8)}/10`)\n" if vc else ""
 
-            seo_ctx = hook_quote if hook_quote else job_data.get("title", "Game highlight")
+            single_title = job_data.get("title") or job_data.get("file_name", "Video")
+            single_words = [s["text"] for s in (segments or []) if s.get("text")] if 'segments' in locals() and segments else []
+            single_transcript = " ".join(single_words).strip() if single_words else hook_quote
+
+            seo_prompt_ctx = (
+                f"Source Video: {single_title}\n"
+                f"Main Hook Climax: {hook_quote} ({hook_reason})\n"
+                f"Speech Transcript:\n\"{single_transcript}\""
+            )
             seo_data = await loop.run_in_executor(
                 None,
                 generate_viral_seo_meta,
-                seo_ctx,
+                seo_prompt_ctx,
                 target_platform,
-                GEMINI_API_KEY
+                GEMINI_API_KEY,
+                1,
+                1
+            )
+
+            # Pre-generate viral clickbait thumbnail for single video
+            single_thumb_path = job_dir / f"thumb_{job_id}.jpg"
+            thumb_title = seo_data.get("viral_title", single_title)
+            thumb_badge = seo_data.get("thumbnail_badge", "🔥 ШОК-КОНТЕНТ")
+            best_thumb_ts = max(0.5, hook_start + 0.8)
+
+            await loop.run_in_executor(
+                None,
+                generate_viral_thumbnail,
+                str(input_path),
+                str(single_thumb_path),
+                thumb_title,
+                best_thumb_ts,
+                thumb_badge
             )
 
             bait = res.get("bait_info", {})
@@ -1868,9 +1937,10 @@ async def execute_video_job(task_info: dict, worker_id: int):
             completed_clips_meta[job_id] = {
                 "media": sent_video.media,
                 "video_file_path": video_url_or_path,
+                "thumbnail_path": str(single_thumb_path) if single_thumb_path.exists() else None,
                 "seo_data": seo_data,
                 "target_platform": target_platform,
-                "title": job_data.get("title", "")
+                "title": seo_data.get("viral_title", single_title)
             }
 
             await sent_video.reply(format_seo_telegram_block(seo_data, target_platform))
@@ -1966,6 +2036,131 @@ async def post_to_channel_handler(event):
     except Exception as err:
         logger.error(f"Error publishing to channel: {err}")
         await event.answer(f"❌ Помилка публікації: {err}", alert=True)
+
+
+@client.on(events.CallbackQuery(pattern=r"^gen_thumb:([a-zA-Z0-9_-]+)$"))
+async def generate_thumbnail_callback_handler(event):
+    clip_job_id = event.pattern_match.group(1)
+    meta = completed_clips_meta.get(clip_job_id, {})
+
+    thumb_path = meta.get("thumbnail_path")
+    seo_data = meta.get("seo_data", {})
+    title = seo_data.get("viral_title", meta.get("title", "ЭПИЧНЫЙ МОМЕНТ 🔥"))
+    badge = seo_data.get("thumbnail_badge", "🔥 ШОК-КОНТЕНТ")
+    target_platform = meta.get("target_platform", "tiktok")
+
+    if not thumb_path or not os.path.exists(thumb_path):
+        await event.answer("⚠️ Обкладинка вже була завантажена або застаріла.", alert=True)
+        return
+
+    await event.answer("🖼 Надсилаю вірусну обкладинку 1080x1920...", alert=False)
+
+    plat_icon = "🎵" if target_platform == "tiktok" else "🔴"
+    caption = (
+        f"🖼 **Вірусна обкладинка 9:16 ({plat_icon} {target_platform.title()} Cover):**\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🏷 **Клікбейт-бейдж:** `{badge}`\n"
+        f"🔥 **Заголовок:** `{title}`\n"
+        f"📐 **Якість:** `1080x1920 Full HD (Ultra-Contrast)`\n\n"
+        f"💡 _Встановіть це зображення як перший кадр або обкладинку для максимального CTR переглядів!_"
+    )
+
+    await client.send_file(
+        event.chat_id,
+        file=thumb_path,
+        caption=caption,
+        force_document=False
+    )
+
+
+@client.on(events.CallbackQuery(pattern=r"^track_prompt:([a-zA-Z0-9_-]+)$"))
+async def track_prompt_callback_handler(event):
+    await event.answer("📊 Моніторинг переглядів", alert=False)
+    await event.respond(
+        "📊 **Як увімкнути моніторинг переглядів для цього ролика:**\n\n"
+        "1. Опублікуйте ваше відео в **TikTok** або **YouTube Shorts**.\n"
+        "2. Скопіюйте посилання на опублікований ролик.\n"
+        "3. Відправте боту команду:\n"
+        "`/track <посилання_на_відео>`\n\n"
+        "Бот автоматично фіксуватиме приріст переглядів, лайків та коментарів! 🚀"
+    )
+
+
+@client.on(events.NewMessage(pattern=r"^/track(?:\s+(.+))?$"))
+async def track_command_handler(event):
+    sender = await event.get_sender()
+    sender_id = sender.id if sender else event.sender_id
+    raw_url = event.pattern_match.group(1)
+
+    if not raw_url:
+        await event.reply(
+            "📊 **Моніторинг переглядів відео (View Tracker):**\n\n"
+            "Використання:\n"
+            "`/track <посилання на TikTok або YouTube Shorts>`\n\n"
+            "Приклад:\n"
+            "`/track https://www.tiktok.com/@user/video/1234567890`\n"
+            "`/track https://youtube.com/shorts/abcdef123`\n\n"
+            "💡 _Щоб переглянути статистику ваших відео, напишіть_ `/myviews`"
+        )
+        return
+
+    url = raw_url.strip()
+    status_msg = await event.reply("🔍 **Зчитую live-метрики відео...**")
+    try:
+        loop = asyncio.get_running_loop()
+        res = await loop.run_in_executor(None, register_video_for_tracking, sender_id, url)
+
+        plat_name = "🎵 TikTok" if res.get("platform") == "tiktok" else "🔴 YouTube Shorts"
+        await status_msg.edit(
+            f"✅ **Відео успішно додано на постійний моніторинг!**\n\n"
+            f"• **Платформа:** {plat_name}\n"
+            f"• **Назва:** _{res.get('title', 'Video')}_\n"
+            f"• **Поточні перегляди:** `{res.get('views', 0):,}` 👀\n"
+            f"• **Лайки:** `{res.get('likes', 0):,}` ❤️\n"
+            f"• **Коментарі:** `{res.get('comments', 0):,}` 💬\n\n"
+            f"💡 _Бот відстежуватиме динаміку. Переглянути статистику:_ `/myviews`"
+        )
+    except Exception as e:
+        await status_msg.edit(f"❌ **Помилка додавання відео на моніторинг:**\n`{e}`")
+
+
+@client.on(events.NewMessage(pattern=r"^/myviews(?:@\w+)?$"))
+async def myviews_command_handler(event):
+    sender = await event.get_sender()
+    sender_id = sender.id if sender else event.sender_id
+
+    status_msg = await event.reply("🔄 **Оновлюю свіжі перегляди ваших відео...**")
+    try:
+        loop = asyncio.get_running_loop()
+        tracked = await loop.run_in_executor(None, refresh_tracked_videos_for_user, sender_id)
+
+        if not tracked:
+            await status_msg.edit(
+                "📊 **У вас поки немає доданих відео для відстеження.**\n\n"
+                "Щоб додати відео, надішліть:\n"
+                "`/track <посилання на TikTok або Shorts>`"
+            )
+            return
+
+        lines = [f"📊 **Аналітика ваших відео ({len(tracked)} шт):**\n"]
+        total_views = 0
+        for i, item in enumerate(tracked, 1):
+            plat_icon = "🎵" if item.get("platform") == "tiktok" else "🔴"
+            init_v = item.get("initial_views", 0)
+            curr_v = item.get("current_views", 0)
+            growth = max(0, curr_v - init_v)
+            total_views += curr_v
+
+            lines.append(
+                f"{i}. {plat_icon} **{item.get('title', 'Відео')}**\n"
+                f"   • Перегляди: **{curr_v:,}** (приріст: `+{growth:,}`)\n"
+                f"   • [Відкрити ролик]({item.get('url')})\n"
+            )
+
+        lines.append(f"🔥 **Сумарно переглядів на всіх відео:** `{total_views:,}` 👀")
+        await status_msg.edit("\n".join(lines), link_preview=False)
+    except Exception as e:
+        await status_msg.edit(f"❌ **Помилка оновлення переглядів:** {e}")
 
 
 async def main():

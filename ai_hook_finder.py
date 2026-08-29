@@ -169,14 +169,32 @@ Respond ONLY with a JSON object in this exact schema:
         temperature=0.3
     )
 
-    response = client.models.generate_content(
-        model="gemini-3.6-flash",
-        contents=prompt,
-        config=config
-    )
+    data = {}
+    models_to_try = [
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.7-flash",
+        "gemini-flash-latest"
+    ]
+    for model_name in models_to_try:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=config
+            )
+            content = response.text.strip()
+            data = json.loads(content)
+            if data:
+                logger.info(f"Successfully identified hook using model '{model_name}'")
+                break
+        except Exception as e:
+            logger.warning(f"Hook finder model {model_name} failed: {e}")
+            continue
 
-    content = response.text.strip()
-    data = json.loads(content)
+    if not data:
+        return fallback_hook(segments, video_duration, target_platform)
 
     start = float(data.get("start_time", data.get("start", 0.0)))
     end = float(data.get("end_time", data.get("end", start + 2.5)))
