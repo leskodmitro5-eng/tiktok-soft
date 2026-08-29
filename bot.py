@@ -102,8 +102,8 @@ SESSION_PATH = str(BASE_DIR / "bot_session")
 # Use MemorySession for cloud bots to prevent session file conflicts
 client = TelegramClient(MemorySession(), TG_API_ID, TG_API_HASH)
 
-# Multi-Worker Queue Pool configuration
-MAX_CONCURRENT_WORKERS = 2
+# Single-Worker Queue for Cloud RAM efficiency (prevents OOM 137 on 512MB instances)
+MAX_CONCURRENT_WORKERS = 1
 job_queue = asyncio.Queue()
 active_workers = []
 
@@ -1849,12 +1849,14 @@ async def execute_video_job(task_info: dict, worker_id: int):
             await event.reply(f"❌ **Помилка:** `{str(e)}`")
 
     finally:
+        import gc
         if 'job_dir' in locals() and job_dir.exists():
             logger.info(f"[Worker #{worker_id}] Cleaning up local job directory: {job_dir}")
             try:
                 shutil.rmtree(job_dir)
             except Exception as cleanup_err:
                 logger.error(f"[Worker #{worker_id}] Error cleaning up job directory {job_dir}: {cleanup_err}")
+        gc.collect()
 
 
 

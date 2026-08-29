@@ -45,7 +45,7 @@ def detect_best_h264_encoder() -> list[str]:
         ("h264_qsv (Intel QuickSync)", ["-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "19"]),
         ("h264_amf (AMD GPU)", ["-c:v", "h264_amf", "-quality", "speed", "-rc", "cqp", "-qp_i", "19", "-qp_p", "19"]),
         ("h264_mf (Windows MediaFoundation)", ["-c:v", "h264_mf", "-b:v", "6500k"]),
-        ("libx264 (CPU Software)", ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-threads", "0"])
+        ("libx264 (CPU Software)", ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-threads", "2"])
     ]
 
     for name, flags in candidates:
@@ -59,7 +59,7 @@ def detect_best_h264_encoder() -> list[str]:
         except Exception:
             pass
 
-    _CACHED_ENCODER_FLAGS = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-threads", "0"]
+    _CACHED_ENCODER_FLAGS = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-threads", "2"]
     logger.info("Using default software CPU encoder libx264")
     return _CACHED_ENCODER_FLAGS
 
@@ -447,7 +447,7 @@ async def process_video_pipeline_async(
 
         video_916_filter = (
             f"[0:v]setpts=PTS/{main_speed},fps={PIPELINE_FPS},split=2[v_bg][v_fg];"
-            f"[v_bg]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},boxblur=20:5[bg_blur];"
+            f"[v_bg]scale=360:640:force_original_aspect_ratio=increase,crop=360:640,boxblur=6:1,scale={W}:{H}[bg_blur];"
             f"[v_fg]scale={W}:{H}:force_original_aspect_ratio=decrease[fg_scaled];"
             f"[bg_blur][fg_scaled]overlay=(W-w)/2:(H-h)/2[v]"
         )
@@ -485,7 +485,7 @@ async def process_video_pipeline_async(
 
             hook_v_filter = (
                 f"[0:v]setpts=PTS/{h_speed},fps={PIPELINE_FPS},split=2[hv_bg][hv_fg];"
-                f"[hv_bg]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},boxblur=20:5[hbg_blur];"
+                f"[hv_bg]scale=360:640:force_original_aspect_ratio=increase,crop=360:640,boxblur=6:1,scale={W}:{H}[hbg_blur];"
                 f"[hv_fg]scale={W}:{H}:force_original_aspect_ratio=decrease[hfg_scaled];"
                 f"[hbg_blur][hfg_scaled]overlay=(W-w)/2:(H-h)/2[hv]"
             )
