@@ -66,31 +66,42 @@ def generate_viral_seo_meta(
 
     client = genai.Client(api_key=gemini_api_key)
 
-    prompt = f"""You are a world-class viral growth strategist and clickbait master for {target_platform} short-form content.
-Analyze the following specific dialogue, speech context, and key moments for Clip #{clip_index} (out of {total_clips} clips):
+    prompt = f"""Act as an elite viral video producer and TikTok/YouTube Shorts expert specializing in high-CTR covers, viral retention, and clickbait hooks.
+Analyze the following dialogue, visual cues, and emotional climax for Clip #{clip_index} (out of {total_clips} clips):
 
 \"\"\"
 {transcript_or_title}
 \"\"\"
 
+A viral 9:16 vertical thumbnail needs:
+1. High emotion or peak action.
+2. A clear focal point in the vertical frame.
+3. 1-3 highly intriguing, short words as massive text overlay to spark curiosity.
+4. An ultra-clickbait neon badge at the top.
+
 TASK:
-Generate high-converting, irresistible, clickbait SEO metadata in Russian strictly tailored to the SPECIFIC DIALOGUE and EVENTS in THIS EXACT CLIP.
-Every clip in a multi-clip series MUST have a completely UNIQUE, specific title and hook based on what actually happened in this segment.
+Analyze the content and generate high-converting, irresistible, clickbait metadata in Russian strictly tailored to THIS SPECIFIC CLIP.
 
 REQUIREMENTS:
-1. `viral_title`: Ultra-clickbait, high-CTR emotional title in Russian. (1 line, 1-2 emojis, e.g. "ОН РЕАЛЬНО СКАЗАЛ ЭТО В ЭФИРЕ?! 😱", "КАК ОН ВЫЖИЛ В ЭТОМ РАУНДЕ?! 🔥", "ЭТОТ СЕКРЕТ ШОКИРОВАЛ ВСЕХ 🤯", "Я ОРАЛ НА ЭТОМ МОМЕНТЕ 2 ЧАСА 💀😂"). If clip index > 1 and multiple clips, you can optionally include [ЧАСТЬ {clip_index}] or make it an intriguing standalone title.
-2. `description`: Punchy 1-2 sentence description highlighting the climax/punchline with a strong Call-To-Action (e.g., "Смотри до конца, чтобы увидеть развязку! Подпишись 👇").
-3. `hashtags`: 5-7 high-traffic, trending hashtags relevant to the ACTUAL topic (e.g., if gaming: ["#gaming", "#cs2", "#рек", "#fyp"], if podcast/humor: ["#подкаст", "#юмор", "#мемы", "#fyp", "#рек"], if IRL/stories: ["#истории", "#шок", "#fyp", "#рек"]).
-4. `pinned_comment`: Provocative engagement question or comment bait to trigger massive discussion in the comments section.
-5. `thumbnail_badge`: Short punchy 2-4 word clickbait badge for the video cover (e.g. "🔥 ШОК-КОНТЕНТ", "😱 100K IQ", "⚡️ 99% НЕ ЗНАЛИ", "👑 ТОП-1 МОМЕНТ", "🎯 1 В 5 КЛАТЧ", "💥 ЭТО РАЗРЫВ").
+1. `thumbnail_text_overlay`: 1-3 ultra-intriguing, high-CTR words for the vertical cover overlay (e.g. "НЕВОЗМОЖНО?!", "ОН В ШОКЕ 😱", "100K IQ МУВ", "ЧТО С НИМ?!", "СЕКРЕТ РАСКРЫТ", "КАК ОН ВЫЖИЛ", "ТАКОГО НЕ ЖДАЛИ").
+2. `thumbnail_badge`: Glowing neon badge pill (e.g. "🔥 ШОК-КОНТЕНТ", "😱 100K IQ", "⚡️ 99% НЕ ЗНАЛИ", "👑 ТОП-1 МОМЕНТ", "🎯 1 В 5 КЛАТЧ", "💥 ЭТО РАЗРЫВ").
+3. `thumbnail_hook_reason`: 1 sentence explaining the emotional hook of this frame.
+4. `thumbnail_timestamp_offset`: Float seconds relative to clip start for extracting the best keyframe (e.g. 1.5, 2.8, 3.5).
+5. `viral_title`: High-converting emotional clickbait title in Russian (1 line, 1-2 emojis).
+6. `description`: Punchy 1-2 sentence description highlighting the climax with a strong Call-To-Action.
+7. `hashtags`: 5-7 high-traffic trending hashtags relevant to the topic.
+8. `pinned_comment`: Provocative engagement question to trigger debate in the comments.
 
 RESPOND ONLY WITH A VALID JSON OBJECT:
 {{
+  "thumbnail_text_overlay": "<string 1-3 words>",
+  "thumbnail_badge": "<string 2-3 words>",
+  "thumbnail_hook_reason": "<string>",
+  "thumbnail_timestamp_offset": 1.5,
   "viral_title": "<string>",
   "description": "<string>",
   "hashtags": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5"],
-  "pinned_comment": "<string>",
-  "thumbnail_badge": "<string>"
+  "pinned_comment": "<string>"
 }}
 """
 
@@ -113,8 +124,10 @@ RESPOND ONLY WITH A VALID JSON OBJECT:
             )
             data = json.loads(response.text)
             if not data.get("thumbnail_badge"):
-                data["thumbnail_badge"] = fb_choice["thumbnail_badge"]
-            logger.info(f"Generated unique SEO metadata via {model_name} for Clip #{clip_index}: Title='{data.get('viral_title')}' (Badge: '{data.get('thumbnail_badge')}')")
+                data["thumbnail_badge"] = fb_choice.get("thumbnail_badge", "🔥 ШОК-КОНТЕНТ")
+            if not data.get("thumbnail_text_overlay"):
+                data["thumbnail_text_overlay"] = data.get("viral_title", "ЭПИЧНЫЙ МОМЕНТ 🔥")
+            logger.info(f"Generated unique SEO metadata via {model_name} for Clip #{clip_index}: Title='{data.get('viral_title')}' (Text: '{data.get('thumbnail_text_overlay')}', Badge: '{data.get('thumbnail_badge')}')")
             return data
         except Exception as e:
             logger.warning(f"SEO generation model {model_name} failed: {e}")

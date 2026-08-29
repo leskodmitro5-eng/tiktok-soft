@@ -246,11 +246,25 @@ def generate_viral_thumbnail(
     badge_font = _get_font(46)
     draw_clickbait_badge(draw, badge_text or "🔥 ШОК-КОНТЕНТ", badge_font, y_pos=220)
 
-    # 3. Format and Draw Multi-line Clickbait Title
+    # 3. Format and Draw Multi-line Clickbait Text Overlay (1-3 words get huge massive fonts)
     clean_title = (title or "ЭПИЧНЫЙ МОМЕНТ В ИГРЕ 🔥").upper().strip()
-    title_font = _get_font(74)
-
     words = clean_title.split()
+
+    if len(words) <= 3:
+        font_size = 94
+        line_height = 118
+        max_line_width = 960
+    elif len(words) <= 6:
+        font_size = 80
+        line_height = 104
+        max_line_width = 940
+    else:
+        font_size = 70
+        line_height = 92
+        max_line_width = 920
+
+    title_font = _get_font(font_size)
+
     lines = []
     curr_line = []
 
@@ -258,8 +272,7 @@ def generate_viral_thumbnail(
         curr_line.append(w)
         test_line = " ".join(curr_line)
         bbox = draw.textbbox((0, 0), test_line, font=title_font)
-        # Limit max line width to 920px
-        if (bbox[2] - bbox[0]) > 920 and len(curr_line) > 1:
+        if (bbox[2] - bbox[0]) > max_line_width and len(curr_line) > 1:
             curr_line.pop()
             lines.append(" ".join(curr_line))
             curr_line = [w]
@@ -268,7 +281,6 @@ def generate_viral_thumbnail(
 
     # Clamp to at most 3 punchy lines
     render_lines = lines[:3]
-    line_height = 102
     start_y = 1520 - (len(render_lines) * line_height)
 
     # 4. Render 3-Layer Clickbait Text (Glow -> Heavy Black Outline -> Vivid Color Fill)

@@ -1579,16 +1579,21 @@ async def execute_video_job(task_info: dict, worker_id: int):
 
                 # Pre-generate viral clickbait thumbnail for this slice
                 clip_thumb_path = job_dir / f"thumb_{idx}_{clip_job_id}.jpg"
-                thumb_title = seo_data.get("viral_title", h.get("title", "ЭПИЧНЫЙ МОМЕНТ 🔥"))
+                thumb_overlay = seo_data.get("thumbnail_text_overlay") or seo_data.get("viral_title", h.get("title", "ЭПИЧНЫЙ МОМЕНТ 🔥"))
                 thumb_badge = seo_data.get("thumbnail_badge", "🔥 ШОК-КОНТЕНТ")
-                best_thumb_ts = max(0.5, (h.get("hook_start", h["start"]) - h["start"]) + 0.8)
+                
+                ai_ts_offset = seo_data.get("thumbnail_timestamp_offset")
+                if ai_ts_offset and isinstance(ai_ts_offset, (int, float)) and 0.2 <= ai_ts_offset <= max(1.0, h["end"] - h["start"]):
+                    best_thumb_ts = float(ai_ts_offset)
+                else:
+                    best_thumb_ts = max(0.5, (h.get("hook_start", h["start"]) - h["start"]) + 0.8)
 
                 await loop.run_in_executor(
                     None,
                     generate_viral_thumbnail,
                     str(clip_raw_path),
                     str(clip_thumb_path),
-                    thumb_title,
+                    thumb_overlay,
                     best_thumb_ts,
                     thumb_badge
                 )
@@ -1798,16 +1803,21 @@ async def execute_video_job(task_info: dict, worker_id: int):
 
             # Pre-generate viral clickbait thumbnail for single video
             single_thumb_path = job_dir / f"thumb_{job_id}.jpg"
-            thumb_title = seo_data.get("viral_title", single_title)
+            thumb_overlay = seo_data.get("thumbnail_text_overlay") or seo_data.get("viral_title", single_title)
             thumb_badge = seo_data.get("thumbnail_badge", "🔥 ШОК-КОНТЕНТ")
-            best_thumb_ts = max(0.5, hook_start + 0.8)
+            
+            ai_ts_offset = seo_data.get("thumbnail_timestamp_offset")
+            if ai_ts_offset and isinstance(ai_ts_offset, (int, float)) and 0.2 <= ai_ts_offset <= 180.0:
+                best_thumb_ts = float(ai_ts_offset)
+            else:
+                best_thumb_ts = max(0.5, hook_start + 0.8)
 
             await loop.run_in_executor(
                 None,
                 generate_viral_thumbnail,
                 str(input_path),
                 str(single_thumb_path),
-                thumb_title,
+                thumb_overlay,
                 best_thumb_ts,
                 thumb_badge
             )
