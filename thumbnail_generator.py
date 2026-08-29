@@ -10,24 +10,44 @@ logger = logging.getLogger("ThumbnailGen")
 BASE_DIR = Path(__file__).resolve().parent
 FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 
-# Fallback fonts available on Windows
+# Font candidates for Windows, Linux (Docker/Render/Debian), and macOS
 FONT_CANDIDATES = [
+    # Linux / Docker container fonts (installed via fonts-liberation / fontconfig)
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/msttcorefonts/Impact.ttf",
+    "/usr/share/fonts/truetype/msttcorefonts/Arial_Bold.ttf",
+    # Windows standard fonts
     "C:/Windows/Fonts/impact.ttf",
     "C:/Windows/Fonts/arialbd.ttf",
     "C:/Windows/Fonts/seguiemj.ttf",
     "C:/Windows/Fonts/tahoma.ttf",
-    "C:/Windows/Fonts/arial.ttf"
+    "C:/Windows/Fonts/arial.ttf",
+    # macOS standard fonts
+    "/System/Library/Fonts/Supplemental/Impact.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "/Library/Fonts/Arial Bold.ttf"
 ]
 
 
 def _get_font(size: int):
-    """Loads best available bold font or defaults to PIL default."""
+    """Loads best available bold font across Windows, Linux/Docker, and macOS."""
     for font_path in FONT_CANDIDATES:
         if os.path.exists(font_path):
             try:
                 return ImageFont.truetype(font_path, size)
             except Exception:
                 continue
+    # Try dynamic resolution by name
+    for font_name in ["LiberationSans-Bold", "DejaVuSans-Bold", "Arial-Bold", "arialbd", "impact", "arial"]:
+        try:
+            return ImageFont.truetype(font_name, size)
+        except Exception:
+            continue
     return ImageFont.load_default()
 
 

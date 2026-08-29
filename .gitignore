@@ -20,7 +20,20 @@ temp_storage/
 !banner_video_tiktok/IMG_9654.MOV
 !bait_soxr/bait.mp4
 
-# Local SQLite databases (optional, can be deployed or mounted as persistent volume)
+# Local SQLite databases & Session storage
 *.session
 *.session-journal
 bot_session.session
+*.db
+*.sqlite
+*.sqlite3
+tiktok_soft.db
+
+# YouTube Cookies & Credentials
+cookies.txt
+.env.local
+.env.*.local
+
+# OS Artifacts
+Thumbs.db
+.DS_Store
