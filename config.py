@@ -77,3 +77,9 @@ except ValueError:
 TG_API_HASH = os.getenv("TG_API_HASH", "1755f1f9d51c4e97669d0d33c82df09e").strip()
 
 ARCHIVE_CHANNEL_ID = os.getenv("ARCHIVE_CHANNEL_ID", "").strip()
+
+# S3-compatible cloud storage configuration (Backblaze B2)
+S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "https://s3.eu-central-003.backblazeb2.com").strip()
+S3_ACCESS_KEY_ID = os.getenv("S3_ACCESS_KEY_ID", "00382c3729c32010000000001").strip()
+S3_SECRET_ACCESS_KEY = os.getenv("S3_SECRET_ACCESS_KEY", "K0035HaxU7H+y3dGkFW+VQ26x7AZ9t0").strip()
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "tiktok-soft-clips-1").strip()

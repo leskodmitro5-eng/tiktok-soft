@@ -93,6 +93,7 @@ from highlight_learner import (
     get_highlight_learning_stats,
     HIGHLIGHT_RATING_DEFINITIONS
 )
+from s3_client import upload_file_to_s3, is_s3_configured
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - [%(levelname)s] - [%(name)s] - %(message)s")
 logger = logging.getLogger("BotRunner")
@@ -697,8 +698,17 @@ async def generate_thumb_callback_handler(event):
     sender_id = sender.id if sender else event.sender_id
     clip_job_id = event.pattern_match.group(1)
 
+    import tempfile
+
     meta = completed_clips_meta.get(clip_job_id)
-    if not meta or not meta.get("video_file_path") or not os.path.exists(meta["video_file_path"]):
+    if not meta or not meta.get("video_file_path"):
+        await event.answer("⚠️ Відео застаріло або видалено.", alert=True)
+        return
+
+    video_path = meta["video_file_path"]
+    is_remote = video_path.startswith("http://") or video_path.startswith("https://")
+
+    if not is_remote and not os.path.exists(video_path):
         await event.answer("⚠️ Відео застаріло або видалено з кешу.", alert=True)
         return
 
@@ -706,14 +716,16 @@ async def generate_thumb_callback_handler(event):
     status_msg = await event.respond("🎨 **Генерація високоефективної обкладинки (Pillow HD)...**")
 
     try:
-        thumb_out = str(Path(meta["video_file_path"]).with_suffix(".thumb.jpg"))
+        # Create a safe temp path for the thumbnail in the system temp directory
+        temp_dir = Path(tempfile.gettempdir())
+        thumb_out = str(temp_dir / f"thumb_{clip_job_id}.jpg")
         title = meta.get("title") or "ЭПИЧНЫЙ МОМЕНТ 🔥"
         
         loop = asyncio.get_running_loop()
         res_thumb = await loop.run_in_executor(
             None,
             generate_viral_thumbnail,
-            meta["video_file_path"],
+            video_path,
             thumb_out,
             title,
             1.0,
@@ -1613,9 +1625,22 @@ async def execute_video_job(task_info: dict, worker_id: int):
                     )]
                 )
 
+                # Upload to S3/R2 if configured
+                video_url_or_path = str(clip_out_path)
+                if is_s3_configured():
+                    s3_key = f"jobs/{job_id}/clip_{h.get('clip_id', idx)}_{target_platform}.mp4"
+                    presigned_url = await loop.run_in_executor(
+                        None,
+                        upload_file_to_s3,
+                        clip_out_path,
+                        s3_key
+                    )
+                    if presigned_url:
+                        video_url_or_path = presigned_url
+
                 completed_clips_meta[clip_job_id] = {
                     "media": sent_video.media,
-                    "video_file_path": str(clip_out_path),
+                    "video_file_path": video_url_or_path,
                     "seo_data": seo_data,
                     "target_platform": target_platform,
                     "title": h.get("title", "")
@@ -1789,9 +1814,22 @@ async def execute_video_job(task_info: dict, worker_id: int):
                 progress_callback=upload_callback
             )
 
+            # Upload to S3/R2 if configured
+            video_url_or_path = str(output_path)
+            if is_s3_configured():
+                s3_key = f"jobs/{job_id}/output_{target_platform}.mp4"
+                presigned_url = await loop.run_in_executor(
+                    None,
+                    upload_file_to_s3,
+                    output_path,
+                    s3_key
+                )
+                if presigned_url:
+                    video_url_or_path = presigned_url
+
             completed_clips_meta[job_id] = {
                 "media": sent_video.media,
-                "video_file_path": str(output_path),
+                "video_file_path": video_url_or_path,
                 "seo_data": seo_data,
                 "target_platform": target_platform,
                 "title": job_data.get("title", "")
@@ -1811,7 +1849,13 @@ async def execute_video_job(task_info: dict, worker_id: int):
             await event.reply(f"❌ **Помилка:** `{str(e)}`")
 
     finally:
-        pass
+        if 'job_dir' in locals() and job_dir.exists():
+            logger.info(f"[Worker #{worker_id}] Cleaning up local job directory: {job_dir}")
+            try:
+                shutil.rmtree(job_dir)
+            except Exception as cleanup_err:
+                logger.error(f"[Worker #{worker_id}] Error cleaning up job directory {job_dir}: {cleanup_err}")
+
 
 
 async def worker_loop(worker_id: int):
