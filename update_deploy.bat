@@ -3,7 +3,7 @@ chcp 65001 >nul
 cd /d "%~dp0"
 
 echo ===================================================
-echo 🚀 Синхронізація проєкту з GitHub та Render...
+echo 🚀 Синхронізація проєкту з GitHub...
 echo ===================================================
 echo.
 
@@ -14,10 +14,10 @@ if exist ".git_bin\cmd\git.exe" (
 )
 
 "%GIT_CMD%" add -A
-"%GIT_CMD%" commit -m "Auto-update: %date% %time%"
-"%GIT_CMD%" push origin main --force
+"%GIT_CMD%" commit -m "Backup / Update: %date% %time%"
+"%GIT_CMD%" push origin main
 
 echo.
-echo ✅ Успішно оновлено! Render автоматично підхопить новий код.
+echo ✅ Проєкт успішно синхронізовано з GitHub!
 pause
 
