@@ -1341,7 +1341,14 @@
             const shortCode = getShortCodeForPayload(payload);
             const botLink = `https://t.me/tiktoksoftmusor_bot?start=${shortCode}`;
 
-            // 1. Try native sendData
+            // 1. Copy link/command to clipboard for backup
+            if (payload.url && navigator.clipboard) {
+                try {
+                    navigator.clipboard.writeText(payload.url);
+                } catch(e) {}
+            }
+
+            // 2. Try native sendData (works from inline button)
             if (tg && typeof tg.sendData === 'function') {
                 try {
                     tg.sendData(JSON.stringify(payload));
@@ -1350,17 +1357,24 @@
                 }
             }
 
-            // 2. Direct Telegram Deep Link (Guaranteed to execute in Telegram Desktop & Mobile)
+            // 3. Direct Telegram Deep Link (Opens chat with bot)
             if (tg && typeof tg.openTelegramLink === 'function') {
                 tg.openTelegramLink(botLink);
             } else {
                 window.location.href = botLink;
             }
 
-            // 3. Auto close webview
+            // 4. Update Button UI
+            const btn = document.querySelector(".btn-launch");
+            if (btn) {
+                btn.innerHTML = "<span>✅</span> ЗАВДАННЯ ВІДПРАВЛЕНО В ЧАТ!";
+                btn.style.background = "linear-gradient(135deg, #10b981, #059669)";
+            }
+
+            // 5. Close webview gracefully
             setTimeout(() => {
                 try { if (tg && tg.close) tg.close(); } catch (e) {}
-            }, 500);
+            }, 1200);
         }
 
         // Action: Launch Video Processing
