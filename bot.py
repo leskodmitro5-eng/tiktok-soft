@@ -404,6 +404,20 @@ async def studio_webapp_command(event):
         )
 
 
+@client.on(events.NewMessage(func=lambda e: bool(e.action and isinstance(e.action, MessageActionWebViewDataSentMe))))
+async def webapp_data_message_handler(event):
+    """Handles data sent directly from Telegram Mini App via tg.sendData()."""
+    sender = await event.get_sender()
+    sender_id = sender.id if sender else event.sender_id
+    raw_data = event.action.data
+    logger.info(f"Received WebApp sendData from user {sender_id}: {raw_data}")
+    try:
+        payload = json.loads(raw_data)
+        await handle_webapp_payload(sender_id, event.chat_id, event.reply, payload)
+    except Exception as e:
+        logger.error(f"Error handling WebApp sendData payload: {e}")
+
+
 async def handle_webapp_payload(sender_id: int, chat_id: int, reply_fn, payload: dict):
     """Unified handler for data sent from Mini App (via WebAppData or deep link)."""
     action = payload.get("action")
@@ -418,9 +432,6 @@ async def handle_webapp_payload(sender_id: int, chat_id: int, reply_fn, payload:
         banner = payload.get("banner", True)
         bait = payload.get("bait", True)
         subs = payload.get("subs", True)
-        start_time = float(payload.get("start_time", 0.0) or 0.0)
-        end_time = float(payload.get("end_time", 0.0) or 0.0)
-        seo_title = payload.get("seo_title", "").strip()
         
         status_msg = await reply_fn(f"🎬 **Отримано завдання з AI Studio 2.0!**\n🎨 Стиль субтитрів: `{style.upper()}`\n⚙️ Перевірка параметрів...")
 
@@ -441,15 +452,15 @@ async def handle_webapp_payload(sender_id: int, chat_id: int, reply_fn, payload:
                 return
 
             platform_label = "🎵 TikTok" if target_platform == "tiktok" else "🔴 YouTube Shorts"
-            mode_name = f"[{platform_label}] (Mini App: {style})"
+            mode_name = f"🤖 100% ПОВНИЙ AI АВТО-ПІЛОТ [{platform_label} 9:16] ({style.upper()})"
 
             job_data = {
                 "type": job_type,
                 "url": url,
-                "title": seo_title or f"Video ({style})",
+                "title": f"Video ({style})",
                 "chat_id": chat_id,
                 "file_name": f"{job_type}_{job_id}.mp4",
-                "approx_duration": end_time - start_time if end_time > start_time else 30.0
+                "approx_duration": 30.0
             }
 
             db_create_job(
@@ -457,7 +468,7 @@ async def handle_webapp_payload(sender_id: int, chat_id: int, reply_fn, payload:
                 user_id=sender_id,
                 media_type=job_type,
                 title=job_data["title"],
-                duration_sec=job_data["approx_duration"]
+                duration_sec=30.0
             )
 
             task_info = {
@@ -469,24 +480,26 @@ async def handle_webapp_payload(sender_id: int, chat_id: int, reply_fn, payload:
                 "include_subs": subs,
                 "target_platform": target_platform,
                 "subtitle_style": style,
-                "start_time": start_time,
-                "end_time": end_time,
                 "mode_name": mode_name,
                 "event": None,
                 "status_msg": status_msg
             }
 
-            job_queue.put_nowait(task_info)
+            await job_queue.put(task_info)
             q_pos = job_queue.qsize()
             logger.info(f"Task {job_id} queued via Mini App for user {sender_id}. Queue position: {q_pos}")
             await status_msg.edit(
-                f"📥 **Завдання #{job_id} успішно додано в чергу монтажу!**\n"
-                f"• Позиція: **#{q_pos}**\n"
-                f"• Платформа: **{platform_label}**\n"
-                f"• Стиль субтитрів: `{style.upper()}`\n"
-                f"• Таймлайн: `{start_time:.1f}с - {end_time:.1f}с`\n"
-                f"• Залишок балансу: **{rem if not is_admin else 'Безліміт'}** відео\n\n"
-                "⏳ _Воркер розпочинає обробку..._"
+                f"🚀 **[1/4] ПОВНИЙ ШІ АВТО-МОНТАЖ РОЗПОЧАТО З AI STUDIO!**\n\n"
+                f"📌 **Джерело:** `{url[:35]}...`\n"
+                f"🎯 **Формат:** `{platform_label}`\n"
+                f"🎨 **Стиль субтитрів:** `{style.upper()}`\n"
+                f"✨ **ШІ робить все повністю сам:**\n"
+                f"• ⏱ **Авто-вибір часу:** знайде вірусний хайлайт та кульмінацію\n"
+                f"• 🎣 **AI Хук:** знайде чіпляючий початок на 0:00\n"
+                f"• 🔤 **Караоке-субтитри:** {style.upper()} (Groq Whisper Large)\n"
+                f"• 📝 **AI Заголовок:** вірусний High-CTR тайтл (Gemini)\n"
+                f"• 📄 **AI Опис & Теги:** SEO опис та хештеги `#fyp #viral #рек`\n\n"
+                f"⏳ _Монтуємо ролик, зачекайте ~30–50 секунд..._"
             )
         else:
             await status_msg.edit(
@@ -1417,7 +1430,7 @@ async def video_message_handler(event):
             dur = tt_info.get("duration", 0.0)
 
             job_id = str(uuid.uuid4())[:8]
-            pending_jobs[job_id] = {
+            job_data = {
                 "type": "tiktok",
                 "url": tt_url,
                 "title": title,
@@ -1426,13 +1439,54 @@ async def video_message_handler(event):
                 "approx_duration": dur
             }
 
-            logger.info(f"Received TikTok link: {tt_url}. Job ID: {job_id}, Duration: {dur}s")
+            logger.info(f"Received TikTok link: {tt_url}. Auto-enqueueing Job ID: {job_id}")
 
-            init_hook = (dur <= 180.0)
-            buttons = build_mode_selection_keyboard(job_id, hook=init_hook, banner=True, bait=True, subs=True, target_platform="tiktok")
-            prompt_text = format_control_panel_text(pending_jobs[job_id], target_platform="tiktok", hook=init_hook, banner=True, bait=True, subs=True)
+            is_admin = (sender_id in ADMIN_IDS)
+            c_ok, rem = db_deduct_credit(sender_id, is_admin=is_admin)
+            if not c_ok:
+                await status_fetch.edit(
+                    "⛔️ **У вас закінчилися кредити на монтаж!**\n\n"
+                    "💎 Поповніть баланс Telegram Stars (/buy) або відкрийте вкладку **Кабінет** у Mini App!"
+                )
+                return
 
-            await status_fetch.edit(prompt_text, buttons=buttons)
+            db_create_job(
+                job_id=job_id,
+                user_id=sender_id,
+                media_type="tiktok",
+                title=title,
+                duration_sec=dur
+            )
+
+            task_info = {
+                "job_id": job_id,
+                "job_data": job_data,
+                "include_hook": True,
+                "include_banner": True,
+                "include_bait": True,
+                "include_subs": True,
+                "target_platform": "tiktok",
+                "subtitle_style": "mrbeast",
+                "mode_name": "🤖 100% ПОВНИЙ AI АВТО-ПІЛОТ [TikTok 9:16]",
+                "event": event,
+                "status_msg": status_fetch
+            }
+
+            await job_queue.put(task_info)
+            q_pos = job_queue.qsize()
+
+            await status_fetch.edit(
+                f"🚀 **[1/4] ПОВНИЙ ШІ АВТО-МОНТАЖ РОЗПОЧАТО!**\n\n"
+                f"📌 **Відео:** _{title[:40]}..._\n"
+                f"🎯 **Формат:** `TikTok 9:16`\n"
+                f"✨ **ШІ робить все повністю сам:**\n"
+                f"• ⏱ **Авто-вибір часу:** знайде вірусний хайлайт та кульмінацію\n"
+                f"• 🎣 **AI Хук:** знайде чіпляючий початок на 0:00\n"
+                f"• 🔤 **Караоке-субтитри:** MrBeast Gold (Groq Whisper Large)\n"
+                f"• 📝 **AI Заголовок:** вірусний High-CTR тайтл (Gemini)\n"
+                f"• 📄 **AI Опис & Теги:** SEO опис та хештеги `#fyp #viral #рек`\n\n"
+                f"⏳ _Монтуємо ролик, зачекайте ~30–50 секунд..._"
+            )
             return
         except Exception as tt_err:
             await status_fetch.edit(f"❌ **Помилка зчитування TikTok відео:**\n`{str(tt_err)}`")
@@ -1452,7 +1506,7 @@ async def video_message_handler(event):
             dur = yt_info.get("duration", 0.0)
 
             job_id = str(uuid.uuid4())[:8]
-            pending_jobs[job_id] = {
+            job_data = {
                 "type": "youtube",
                 "url": yt_url,
                 "title": title,
@@ -1461,20 +1515,58 @@ async def video_message_handler(event):
                 "approx_duration": dur
             }
 
-            logger.info(f"Received YouTube link: {yt_url}. Job ID: {job_id}, Duration: {dur}s")
+            logger.info(f"Received YouTube link: {yt_url}. Auto-enqueueing Job ID: {job_id}")
 
-            init_hook = (dur <= 180.0)
-            buttons = build_mode_selection_keyboard(job_id, hook=init_hook, banner=True, bait=True, subs=True, target_platform="tiktok")
-            prompt_text = format_control_panel_text(pending_jobs[job_id], target_platform="tiktok", hook=init_hook, banner=True, bait=True, subs=True)
+            is_admin = (sender_id in ADMIN_IDS)
+            c_ok, rem = db_deduct_credit(sender_id, is_admin=is_admin)
+            if not c_ok:
+                await status_fetch.edit(
+                    "⛔️ **У вас закінчилися кредити на монтаж!**\n\n"
+                    "💎 Поповніть баланс Telegram Stars (/buy) або відкрийте вкладку **Кабінет** у Mini App!"
+                )
+                return
 
-            await status_fetch.edit(prompt_text, buttons=buttons)
+            db_create_job(
+                job_id=job_id,
+                user_id=sender_id,
+                media_type="youtube",
+                title=title,
+                duration_sec=dur
+            )
+
+            task_info = {
+                "job_id": job_id,
+                "job_data": job_data,
+                "include_hook": True,
+                "include_banner": True,
+                "include_bait": True,
+                "include_subs": True,
+                "target_platform": "tiktok",
+                "subtitle_style": "mrbeast",
+                "mode_name": "🤖 100% ПОВНИЙ AI АВТО-ПІЛОТ [TikTok 9:16]",
+                "event": event,
+                "status_msg": status_fetch
+            }
+
+            await job_queue.put(task_info)
+            q_pos = job_queue.qsize()
+
+            await status_fetch.edit(
+                f"🚀 **[1/4] ПОВНИЙ ШІ АВТО-МОНТАЖ РОЗПОЧАТО!**\n\n"
+                f"📌 **Відео:** _{title[:40]}..._\n"
+                f"🎯 **Формат:** `TikTok 9:16`\n"
+                f"✨ **ШІ робить все повністю сам:**\n"
+                f"• ⏱ **Авто-вибір часу:** знайде вірусний хайлайт та кульмінацію\n"
+                f"• 🎣 **AI Хук:** знайде чіпляючий початок на 0:00\n"
+                f"• 🔤 **Караоке-субтитри:** MrBeast Gold (Groq Whisper Large)\n"
+                f"• 📝 **AI Заголовок:** вірусний High-CTR тайтл (Gemini)\n"
+                f"• 📄 **AI Опис & Теги:** SEO опис та хештеги `#fyp #viral #рек`\n\n"
+                f"⏳ _Монтуємо ролик, зачекайте ~30–50 секунд..._"
+            )
             return
         except Exception as yt_err:
             await status_fetch.edit(f"❌ **Помилка зчитування YouTube відео:**\n`{str(yt_err)}`")
             return
-
-
-
 
     # --- 2. Direct Telegram Video ---
     message = event.message
@@ -1505,7 +1597,7 @@ async def video_message_handler(event):
                 msg_dur = attr.duration
 
     job_id = str(uuid.uuid4())[:8]
-    pending_jobs[job_id] = {
+    job_data = {
         "type": "telegram_file",
         "message": message,
         "chat_id": event.chat_id,
@@ -1513,13 +1605,55 @@ async def video_message_handler(event):
         "approx_duration": msg_dur
     }
 
-    logger.info(f"Received video candidate for processing. Job ID: {job_id}, Approx duration: {msg_dur}s")
+    logger.info(f"Received direct video file. Auto-enqueueing Job ID: {job_id}, Duration: {msg_dur}s")
 
-    init_hook = (msg_dur <= 180.0)
-    buttons = build_mode_selection_keyboard(job_id, hook=init_hook, banner=True, bait=True, subs=True, target_platform="tiktok")
-    prompt_text = format_control_panel_text(pending_jobs[job_id], target_platform="tiktok", hook=init_hook, banner=True, bait=True, subs=True)
+    is_admin = (sender_id in ADMIN_IDS)
+    c_ok, rem = db_deduct_credit(sender_id, is_admin=is_admin)
+    if not c_ok:
+        await event.reply(
+            "⛔️ **У вас закінчилися кредити на монтаж!**\n\n"
+            "💎 Поповніть баланс Telegram Stars (/buy) або відкрийте вкладку **Кабінет** у Mini App!"
+        )
+        return
 
-    await event.reply(prompt_text, buttons=buttons)
+    db_create_job(
+        job_id=job_id,
+        user_id=sender_id,
+        media_type="telegram_file",
+        title=file_name,
+        duration_sec=msg_dur
+    )
+
+    status_msg = await event.reply("🚀 **[1/4] Завантаження файлу та запуск AI авто-монтажу...**")
+
+    task_info = {
+        "job_id": job_id,
+        "job_data": job_data,
+        "include_hook": True,
+        "include_banner": True,
+        "include_bait": True,
+        "include_subs": True,
+        "target_platform": "tiktok",
+        "subtitle_style": "mrbeast",
+        "mode_name": "🤖 100% ПОВНИЙ AI АВТО-ПІЛОТ [TikTok 9:16]",
+        "event": event,
+        "status_msg": status_msg
+    }
+
+    await job_queue.put(task_info)
+
+    await status_msg.edit(
+        f"🚀 **[1/4] ПОВНИЙ ШІ АВТО-МОНТАЖ РОЗПОЧАТО!**\n\n"
+        f"📁 **Файл:** `{file_name}`\n"
+        f"🎯 **Формат:** `TikTok 9:16`\n"
+        f"✨ **ШІ робить все повністю сам:**\n"
+        f"• ⏱ **Авто-вибір часу:** знайде вірусний хайлайт та кульмінацію\n"
+        f"• 🎣 **AI Хук:** знайде чіпляючий початок на 0:00\n"
+        f"• 🔤 **Караоке-субтитри:** MrBeast Gold (Groq Whisper Large)\n"
+        f"• 📝 **AI Заголовок:** вірусний High-CTR тайтл (Gemini)\n"
+        f"• 📄 **AI Опис & Теги:** SEO опис та хештеги `#fyp #viral #рек`\n\n"
+        f"⏳ _Монтуємо ролик, зачекайте ~30–50 секунд..._"
+    )
 
 
 @client.on(events.CallbackQuery(pattern=r"^rate:([a-zA-Z0-9_-]+):(\d+)$"))
