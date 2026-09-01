@@ -240,6 +240,30 @@ def build_mode_selection_keyboard(
     ]
 
 
+def format_control_panel_text(job_data: dict, target_platform: str = "tiktok", hook: bool = True, banner: bool = True, bait: bool = True, subs: bool = True) -> str:
+    title = job_data.get("title") or job_data.get("file_name", "Відео")
+    dur = job_data.get("approx_duration", 0.0)
+    plat_name = "🎵 TikTok (9:16)" if target_platform in ("tiktok", "tt") else "🔴 YouTube Shorts (9:16)"
+    
+    return (
+        "🎬 **Панель налаштування монтажу відео:**\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 **Відео:** _{title[:40]}_\n"
+        f"⏱ **Тривалість:** ~`{dur:.1f} сек`\n"
+        f"🎯 **Платформа:** **{plat_name}**\n\n"
+        "⚙️ **Оберіть потрібні модулі перед запуском:**\n"
+        f"• 🎣 **AI Хук на 0:00:** {'✅ Увімкнено' if hook else '❌ Вимкнено'}\n"
+        f"• 📢 **Рекламний банер:** {'✅ Увімкнено' if banner else '❌ Вимкнено'}\n"
+        f"• 🪤 **Вірусний байт:** {'✅ Увімкнено' if bait else '❌ Вимкнено'}\n"
+        f"• 🔤 **Караоке-субтитри MrBeast:** {'✅ Увімкнено' if subs else '❌ Вимкнено'}\n\n"
+        "🤖 **ШІ автоматично згенерує для готового ролика:**\n"
+        "🔥 **Клікбейтний High-CTR заголовок**\n"
+        "📄 **SEO-опис для рекомендацій**\n"
+        "🏷 **Трендові хештеги (#fyp #viral #shorts #рек)**\n\n"
+        "👇 _Налаштуйте кнопками нижче та тисніть_ **«🚀 ЗАПУСТИТИ ОБРОБКУ ВІДЕО»**:"
+    )
+
+
 async def update_progress_message(status_msg, prefix: str, current: int, total: int, last_update: list):
     """Updates Telegram status message throttled to every 3.5 seconds to avoid FloodWait."""
     now = time.time()
@@ -1424,7 +1448,7 @@ async def video_message_handler(event):
             dur = tt_info.get("duration", 0.0)
 
             job_id = str(uuid.uuid4())[:8]
-            job_data = {
+            pending_jobs[job_id] = {
                 "type": "tiktok",
                 "url": tt_url,
                 "title": title,
@@ -1433,45 +1457,13 @@ async def video_message_handler(event):
                 "approx_duration": dur
             }
 
-            logger.info(f"Received TikTok link: {tt_url}. Auto-enqueueing Job ID: {job_id}")
+            logger.info(f"Received TikTok link: {tt_url}. Job ID: {job_id}, Duration: {dur}s")
 
-            db_create_job(
-                job_id=job_id,
-                user_id=sender_id,
-                media_type="tiktok",
-                title=title,
-                duration_sec=dur
-            )
+            init_hook = (dur <= 180.0)
+            buttons = build_mode_selection_keyboard(job_id, hook=init_hook, banner=True, bait=True, subs=True, target_platform="tiktok")
+            prompt_text = format_control_panel_text(pending_jobs[job_id], target_platform="tiktok", hook=init_hook, banner=True, bait=True, subs=True)
 
-            task_info = {
-                "job_id": job_id,
-                "job_data": job_data,
-                "include_hook": True,
-                "include_banner": True,
-                "include_bait": True,
-                "include_subs": True,
-                "target_platform": "tiktok",
-                "subtitle_style": "mrbeast",
-                "mode_name": "🤖 100% ПОВНИЙ AI АВТО-ПІЛОТ [TikTok 9:16]",
-                "event": event,
-                "status_msg": status_fetch
-            }
-
-            await job_queue.put(task_info)
-            q_pos = job_queue.qsize()
-
-            await status_fetch.edit(
-                f"🚀 **[1/4] ПОВНИЙ ШІ АВТО-МОНТАЖ РОЗПОЧАТО!**\n\n"
-                f"📌 **Відео:** _{title[:40]}..._\n"
-                f"🎯 **Формат:** `TikTok 9:16`\n"
-                f"✨ **ШІ робить все повністю сам:**\n"
-                f"• ⏱ **Авто-вибір часу:** знайде вірусний хайлайт та кульмінацію\n"
-                f"• 🎣 **AI Хук:** знайде чіпляючий початок на 0:00\n"
-                f"• 🔤 **Караоке-субтитри:** MrBeast Gold (Groq Whisper Large)\n"
-                f"• 📝 **AI Заголовок:** вірусний High-CTR тайтл (Gemini)\n"
-                f"• 📄 **AI Опис & Теги:** SEO опис та хештеги `#fyp #viral #рек`\n\n"
-                f"⏳ _Монтуємо ролик, зачекайте ~30–50 секунд..._"
-            )
+            await status_fetch.edit(prompt_text, buttons=buttons)
             return
         except Exception as tt_err:
             await status_fetch.edit(f"❌ **Помилка зчитування TikTok відео:**\n`{str(tt_err)}`")
@@ -1491,7 +1483,7 @@ async def video_message_handler(event):
             dur = yt_info.get("duration", 0.0)
 
             job_id = str(uuid.uuid4())[:8]
-            job_data = {
+            pending_jobs[job_id] = {
                 "type": "youtube",
                 "url": yt_url,
                 "title": title,
@@ -1500,45 +1492,13 @@ async def video_message_handler(event):
                 "approx_duration": dur
             }
 
-            logger.info(f"Received YouTube link: {yt_url}. Auto-enqueueing Job ID: {job_id}")
+            logger.info(f"Received YouTube link: {yt_url}. Job ID: {job_id}, Duration: {dur}s")
 
-            db_create_job(
-                job_id=job_id,
-                user_id=sender_id,
-                media_type="youtube",
-                title=title,
-                duration_sec=dur
-            )
+            init_hook = (dur <= 180.0)
+            buttons = build_mode_selection_keyboard(job_id, hook=init_hook, banner=True, bait=True, subs=True, target_platform="tiktok")
+            prompt_text = format_control_panel_text(pending_jobs[job_id], target_platform="tiktok", hook=init_hook, banner=True, bait=True, subs=True)
 
-            task_info = {
-                "job_id": job_id,
-                "job_data": job_data,
-                "include_hook": True,
-                "include_banner": True,
-                "include_bait": True,
-                "include_subs": True,
-                "target_platform": "tiktok",
-                "subtitle_style": "mrbeast",
-                "mode_name": "🤖 100% ПОВНИЙ AI АВТО-ПІЛОТ [TikTok 9:16]",
-                "event": event,
-                "status_msg": status_fetch
-            }
-
-            await job_queue.put(task_info)
-            q_pos = job_queue.qsize()
-
-            await status_fetch.edit(
-                f"🚀 **[1/4] ПОВНИЙ ШІ АВТО-МОНТАЖ РОЗПОЧАТО!**\n\n"
-                f"📌 **Відео:** _{title[:40]}..._\n"
-                f"🎯 **Формат:** `TikTok 9:16`\n"
-                f"✨ **ШІ робить все повністю сам:**\n"
-                f"• ⏱ **Авто-вибір часу:** знайде вірусний хайлайт та кульмінацію\n"
-                f"• 🎣 **AI Хук:** знайде чіпляючий початок на 0:00\n"
-                f"• 🔤 **Караоке-субтитри:** MrBeast Gold (Groq Whisper Large)\n"
-                f"• 📝 **AI Заголовок:** вірусний High-CTR тайтл (Gemini)\n"
-                f"• 📄 **AI Опис & Теги:** SEO опис та хештеги `#fyp #viral #рек`\n\n"
-                f"⏳ _Монтуємо ролик, зачекайте ~30–50 секунд..._"
-            )
+            await status_fetch.edit(prompt_text, buttons=buttons)
             return
         except Exception as yt_err:
             await status_fetch.edit(f"❌ **Помилка зчитування YouTube відео:**\n`{str(yt_err)}`")
@@ -1573,7 +1533,7 @@ async def video_message_handler(event):
                 msg_dur = attr.duration
 
     job_id = str(uuid.uuid4())[:8]
-    job_data = {
+    pending_jobs[job_id] = {
         "type": "telegram_file",
         "message": message,
         "chat_id": event.chat_id,
@@ -1581,46 +1541,13 @@ async def video_message_handler(event):
         "approx_duration": msg_dur
     }
 
-    logger.info(f"Received direct video file. Auto-enqueueing Job ID: {job_id}, Duration: {msg_dur}s")
+    logger.info(f"Received video candidate for processing. Job ID: {job_id}, Approx duration: {msg_dur}s")
 
-    db_create_job(
-        job_id=job_id,
-        user_id=sender_id,
-        media_type="telegram_file",
-        title=file_name,
-        duration_sec=msg_dur
-    )
+    init_hook = (msg_dur <= 180.0)
+    buttons = build_mode_selection_keyboard(job_id, hook=init_hook, banner=True, bait=True, subs=True, target_platform="tiktok")
+    prompt_text = format_control_panel_text(pending_jobs[job_id], target_platform="tiktok", hook=init_hook, banner=True, bait=True, subs=True)
 
-    status_msg = await event.reply("🚀 **[1/4] Завантаження файлу та запуск AI авто-монтажу...**")
-
-    task_info = {
-        "job_id": job_id,
-        "job_data": job_data,
-        "include_hook": True,
-        "include_banner": True,
-        "include_bait": True,
-        "include_subs": True,
-        "target_platform": "tiktok",
-        "subtitle_style": "mrbeast",
-        "mode_name": "🤖 100% ПОВНИЙ AI АВТО-ПІЛОТ [TikTok 9:16]",
-        "event": event,
-        "status_msg": status_msg
-    }
-
-    await job_queue.put(task_info)
-
-    await status_msg.edit(
-        f"🚀 **[1/4] ПОВНИЙ ШІ АВТО-МОНТАЖ РОЗПОЧАТО!**\n\n"
-        f"📁 **Файл:** `{file_name}`\n"
-        f"🎯 **Формат:** `TikTok 9:16`\n"
-        f"✨ **ШІ робить все повністю сам:**\n"
-        f"• ⏱ **Авто-вибір часу:** знайде вірусний хайлайт та кульмінацію\n"
-        f"• 🎣 **AI Хук:** знайде чіпляючий початок на 0:00\n"
-        f"• 🔤 **Караоке-субтитри:** MrBeast Gold (Groq Whisper Large)\n"
-        f"• 📝 **AI Заголовок:** вірусний High-CTR тайтл (Gemini)\n"
-        f"• 📄 **AI Опис & Теги:** SEO опис та хештеги `#fyp #viral #рек`\n\n"
-        f"⏳ _Монтуємо ролик, зачекайте ~30–50 секунд..._"
-    )
+    await event.reply(prompt_text, buttons=buttons)
 
 
 @client.on(events.CallbackQuery(pattern=r"^rate:([a-zA-Z0-9_-]+):(\d+)$"))
@@ -1714,17 +1641,6 @@ async def mode_selection_handler(event):
 
     if job_id not in pending_jobs:
         await event.answer("⚠️ Це завдання застаріло або вже виконується.", alert=True)
-        return
-
-    # Check & Deduct Credit
-    is_admin = (sender_id in ADMIN_IDS)
-    c_ok, rem = db_deduct_credit(sender_id, is_admin=is_admin)
-    if not c_ok:
-        await event.answer("⛔️ Недостатньо кредитів!", alert=True)
-        await event.respond(
-            "⛔️ **У вас закінчилися кредити на монтаж!**\n\n"
-            "💎 Поповніть баланс Telegram Stars (/buy) або запросіть друга (/ref) для безкоштовних відео!"
-        )
         return
 
     include_hook = (hook_val in ("1", "hook_yes"))
