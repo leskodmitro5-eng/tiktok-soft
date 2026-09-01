@@ -1307,47 +1307,57 @@
             }
         }
 
+        function getShortCodeForPayload(payload) {
+            if (payload.action === "buy_stars") {
+                return `plan_${payload.plan || 'starter'}`;
+            }
+            if (payload.action === "render_video" && payload.url) {
+                const u = payload.url.trim();
+                // TikTok: vt.tiktok.com/ZSVKVk9nr/ or /video/12345
+                const vtMatch = u.match(/vt\.tiktok\.com\/([\w-]+)/i);
+                if (vtMatch) return `tt_${vtMatch[1]}`;
+
+                const ttMatch = u.match(/tiktok\.com\/(?:@[\w.-]+\/video\/(\d+)|(?:v|embed|t)\/(\w+)|(\w+))/i);
+                if (ttMatch) {
+                    const id = ttMatch[1] || ttMatch[2] || ttMatch[3];
+                    if (id && id.length <= 40) return `tt_${id}`;
+                }
+
+                // YouTube: youtu.be/xxx or shorts/xxx
+                const ytMatch = u.match(/(?:youtu\.be\/|youtube\.com\/(?:shorts\/|watch\?v=))([\w-]{11})/i);
+                if (ytMatch) return `yt_${ytMatch[1]}`;
+            }
+            return `auto_${payload.style || 'mrbeast'}`;
+        }
+
         // Centralized Dispatcher for Mini App Actions
-        function sendTelegramPayload(payload, successMsg = "Дані успішно передано в бот!") {
+        function sendTelegramPayload(payload, successMsg = "Дані передано в бот!") {
             hapticFeedback('success');
             showToast(successMsg, "🚀");
             
-            let sent = false;
-            if (tg) {
+            const shortCode = getShortCodeForPayload(payload);
+            const botLink = `https://t.me/tiktoksoftmusor_bot?start=${shortCode}`;
+
+            // 1. Try native sendData
+            if (tg && typeof tg.sendData === 'function') {
                 try {
                     tg.sendData(JSON.stringify(payload));
-                    sent = true;
                 } catch (e) {
-                    console.warn("tg.sendData could not be used (menu button mode):", e);
+                    console.warn("tg.sendData:", e);
                 }
-
-                // If sendData is not allowed (e.g. Menu Button), use deep link fallback
-                if (!sent) {
-                    try {
-                        let b64 = "";
-                        if (payload.action === "buy_stars") {
-                            b64 = `plan_${payload.plan || 'starter'}`;
-                        } else {
-                            b64 = `app_${btoa(unescape(encodeURIComponent(JSON.stringify(payload))))}`;
-                        }
-                        const botLink = `https://t.me/tiktoksoftmusor_bot?start=${b64}`;
-                        if (tg.openTelegramLink) {
-                            tg.openTelegramLink(botLink);
-                        } else {
-                            window.location.href = botLink;
-                        }
-                    } catch (e2) {
-                        console.error("Deep link fallback failed:", e2);
-                    }
-                }
-
-                // Auto close webview so user lands right on the bot's response in chat
-                setTimeout(() => {
-                    try { tg.close(); } catch (e) {}
-                }, 600);
-            } else {
-                console.log("Mock Environment Payload:", payload);
             }
+
+            // 2. Direct Telegram Deep Link (Guaranteed to execute in Telegram Desktop & Mobile)
+            if (tg && typeof tg.openTelegramLink === 'function') {
+                tg.openTelegramLink(botLink);
+            } else {
+                window.location.href = botLink;
+            }
+
+            // 3. Auto close webview
+            setTimeout(() => {
+                try { if (tg && tg.close) tg.close(); } catch (e) {}
+            }, 500);
         }
 
         // Action: Launch Video Processing

@@ -312,8 +312,9 @@ async def start_handler(event):
 
     ref_arg = event.pattern_match.group(1)
     
-    # Handle deep link from WebApp (Plan purchase or direct action)
+    # Handle deep link from WebApp (Plan purchase, TikTok/YouTube direct short code, or auto-preset)
     if ref_arg:
+        logger.info(f"Received start ref_arg from user {sender_id}: {ref_arg}")
         if ref_arg.startswith("plan_"):
             plan_type = ref_arg.replace("plan_", "")
             plan_costs = {"starter": (25, 10), "pro": (50, 25), "unlimited": (100, 0)}
@@ -321,6 +322,29 @@ async def start_handler(event):
             await handle_webapp_payload(sender_id, event.chat_id, event.reply, {
                 "action": "buy_stars", "plan": plan_type, "stars": stars, "credits": creds
             })
+            return
+        elif ref_arg.startswith("tt_"):
+            tt_id = ref_arg.replace("tt_", "")
+            tt_url = f"https://vt.tiktok.com/{tt_id}/" if not tt_id.isdigit() else f"https://www.tiktok.com/video/{tt_id}"
+            await handle_webapp_payload(sender_id, event.chat_id, event.reply, {
+                "action": "render_video", "url": tt_url, "platform": "tiktok", "style": "mrbeast"
+            })
+            return
+        elif ref_arg.startswith("yt_"):
+            yt_id = ref_arg.replace("yt_", "")
+            yt_url = f"https://youtu.be/{yt_id}"
+            await handle_webapp_payload(sender_id, event.chat_id, event.reply, {
+                "action": "render_video", "url": yt_url, "platform": "tiktok", "style": "mrbeast"
+            })
+            return
+        elif ref_arg.startswith("auto_") or ref_arg == "auto":
+            style = ref_arg.replace("auto_", "") if ref_arg.startswith("auto_") else "mrbeast"
+            await event.reply(
+                f"🤖 **AI Авто-режим збережено!**\n\n"
+                f"🎨 **Стиль субтитрів:** `{style.upper()}`\n"
+                f"🎯 **Формат:** `TikTok / Shorts (9:16)`\n\n"
+                f"📥 **Тепер надішліть відео файлом або посиланням прямо сюди в чат** — ШІ автоматично обере найкращі таймінги, змонтує ролик, накладе субтитри, створить вірусний заголовок, опис та хештеги!"
+            )
             return
         elif ref_arg.startswith("app_"):
             try:
