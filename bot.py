@@ -370,36 +370,28 @@ async def start_handler(event):
     credits_text = "♾ Безліміт (Admin)" if is_admin else f"{user.get('credits_balance', 0)} відео"
 
     welcome_text = (
-        "🎬 **Вітаємо в TikTok Video Processor + Gemini AI Hook & Cutter (Studio v2.0)!**\n\n"
+        "🎬 **TikTok AI Video Processor (Auto-Pilot v2.0)!**\n\n"
         f"👤 **Ваш акаунт:** `{first_name}` (@{username or 'no_tag'})\n"
         f"💎 **Баланс генерацій:** **{credits_text}**\n\n"
-        "⚡️ **Швидкі команди:**\n"
-        "• `/studio` — 📱 **Відкрити інтерактивну AI Studio (Mini App)**\n"
-        "• `/profile` — ваш кабінет, баланс та тарифи\n"
-        "• `/buy` — поповнення кредитів (Telegram Stars)\n"
-        "• `/ref` — партнерська програма (бонуси за друзів)\n"
-        "• `/track <посилання>` — моніторинг переглядів відео в TikTok / Shorts\n"
-        "• `/myviews` — аналітика ваших опублікованих роликів\n"
-        "• `/stats` — матриця навчання Gemini (1-10)\n\n"
-        "📥 **Надішліть відео файлом або посиланням на YouTube чи TikTok, щоб розпочати!**\n\n"
+        "✨ **ШІ робить весь монтаж повністю автоматично:**\n"
+        "• ⏱ **Авто-вибір часу:** знаходить найкращий вірусний момент (Whisper + Gemini)\n"
+        "• 🎣 **AI Хук на 0:00:** утримання уваги з перших секунд\n"
+        "• 🔤 **Караоке-субтитри MrBeast:** точна динамічна синхронізація слів\n"
+        "• 📝 **AI Заголовок:** вірусний High-CTR тайтл від Gemini\n"
+        "• 📄 **AI Опис & Теги:** SEO текст та хештеги `#fyp #viral #рек`\n\n"
+        "📥 **Надішліть посилання на TikTok, YouTube Shorts або відеофайл сюди в чат, щоб розпочати!**"
     )
 
-    buttons = []
-    if WEBAPP_URL:
-        buttons.append([KeyboardButtonWebView("🎬 Відкрити AI Studio 2.0 (Mini App) 🚀", url=WEBAPP_URL)])
-    else:
-        buttons.append([Button.inline("🎬 AI Studio 2.0 (Mini App)", data="quick_cmd:studio")])
-
-    buttons.extend([
+    buttons = [
         [
             Button.inline("💎 Мій профіль & Баланс", data="quick_cmd:profile"),
-            Button.inline("💳 Купити тарифи", data="quick_cmd:buy")
+            Button.inline("💳 Купити тарифи (Stars)", data="quick_cmd:buy")
         ],
         [
             Button.inline("👥 Реферальна програма", data="quick_cmd:ref"),
-            Button.inline("📊 Статистика ШІ (/stats)", data="quick_cmd:stats")
+            Button.inline("🧠 Матриця навчання ШІ", data="quick_cmd:stats")
         ]
-    ])
+    ]
     await event.reply(welcome_text, buttons=buttons)
 
 
@@ -466,15 +458,6 @@ async def handle_webapp_payload(sender_id: int, chat_id: int, reply_fn, payload:
             job_id = str(uuid.uuid4())[:8]
             job_type = "tiktok" if tt_url else ("youtube" if yt_url else "url")
             
-            is_admin = (sender_id in ADMIN_IDS)
-            c_ok, rem = db_deduct_credit(sender_id, is_admin=is_admin)
-            if not c_ok:
-                await status_msg.edit(
-                    "⛔️ **У вас закінчилися кредити на монтаж!**\n\n"
-                    "💎 Поповніть баланс Telegram Stars (/buy) або відкрийте вкладку **Кабінет** у Mini App!"
-                )
-                return
-
             platform_label = "🎵 TikTok" if target_platform == "tiktok" else "🔴 YouTube Shorts"
             mode_name = f"🤖 100% ПОВНИЙ AI АВТО-ПІЛОТ [{platform_label} 9:16] ({style.upper()})"
 
@@ -1418,19 +1401,6 @@ async def video_message_handler(event):
     user = db_get_or_create_user(sender_id, sender.username or "", sender.first_name or "")
     is_admin = (sender_id in ADMIN_IDS)
 
-    # Check credit balance
-    if not is_admin and not db_has_active_subscription(user) and user.get("credits_balance", 0) <= 0:
-        msg = (
-            "⛔️ **У вас закінчилися безкоштовні кредити на монтаж!**\n\n"
-            "💎 Поповніть баланс Telegram Stars або запросіть друзів за вашим реферальним посиланням і отримайте додаткові кредити безкоштовно!"
-        )
-        buttons = [
-            [Button.inline("💳 Купити тарифи (Stars)", data="quick_cmd:buy")],
-            [Button.inline("👥 Запросити друга (+2 кредити)", data="quick_cmd:ref")]
-        ]
-        await event.reply(msg, buttons=buttons)
-        return
-
     msg_id = (event.chat_id, event.message.id)
     if msg_id in processed_message_ids:
         return
@@ -1464,15 +1434,6 @@ async def video_message_handler(event):
             }
 
             logger.info(f"Received TikTok link: {tt_url}. Auto-enqueueing Job ID: {job_id}")
-
-            is_admin = (sender_id in ADMIN_IDS)
-            c_ok, rem = db_deduct_credit(sender_id, is_admin=is_admin)
-            if not c_ok:
-                await status_fetch.edit(
-                    "⛔️ **У вас закінчилися кредити на монтаж!**\n\n"
-                    "💎 Поповніть баланс Telegram Stars (/buy) або відкрийте вкладку **Кабінет** у Mini App!"
-                )
-                return
 
             db_create_job(
                 job_id=job_id,
@@ -1540,15 +1501,6 @@ async def video_message_handler(event):
             }
 
             logger.info(f"Received YouTube link: {yt_url}. Auto-enqueueing Job ID: {job_id}")
-
-            is_admin = (sender_id in ADMIN_IDS)
-            c_ok, rem = db_deduct_credit(sender_id, is_admin=is_admin)
-            if not c_ok:
-                await status_fetch.edit(
-                    "⛔️ **У вас закінчилися кредити на монтаж!**\n\n"
-                    "💎 Поповніть баланс Telegram Stars (/buy) або відкрийте вкладку **Кабінет** у Mini App!"
-                )
-                return
 
             db_create_job(
                 job_id=job_id,
@@ -1630,15 +1582,6 @@ async def video_message_handler(event):
     }
 
     logger.info(f"Received direct video file. Auto-enqueueing Job ID: {job_id}, Duration: {msg_dur}s")
-
-    is_admin = (sender_id in ADMIN_IDS)
-    c_ok, rem = db_deduct_credit(sender_id, is_admin=is_admin)
-    if not c_ok:
-        await event.reply(
-            "⛔️ **У вас закінчилися кредити на монтаж!**\n\n"
-            "💎 Поповніть баланс Telegram Stars (/buy) або відкрийте вкладку **Кабінет** у Mini App!"
-        )
-        return
 
     db_create_job(
         job_id=job_id,
@@ -2631,8 +2574,7 @@ async def main():
             scope=BotCommandScopeDefault(),
             lang_code="",
             commands=[
-                BotCommand(command="start", description="🚀 Головне меню"),
-                BotCommand(command="studio", description="🎬 AI Studio 2.0 (Mini App)"),
+                BotCommand(command="start", description="🚀 Головне меню & AI Монтаж"),
                 BotCommand(command="profile", description="👤 Особистий кабінет & Баланс"),
                 BotCommand(command="buy", description="💳 Купити тарифи (Telegram Stars)"),
                 BotCommand(command="ref", description="👥 Партнерська програма (Реферали)"),
@@ -2645,17 +2587,15 @@ async def main():
     except Exception as cmd_err:
         logger.warning(f"Failed to register bot commands: {cmd_err}")
 
-    # Register persistent Telegram WebApp Menu Button (beside the message input)
-    if WEBAPP_URL:
-        try:
-            fresh_url = f"{WEBAPP_URL.rstrip('/')}/?v={int(time.time())}"
-            await client(SetBotMenuButtonRequest(
-                user_id=InputUserEmpty(),
-                button=BotMenuButton(text="🎬 AI Studio", url=fresh_url)
-            ))
-            logger.info(f"Registered persistent Telegram WebApp Menu Button -> {fresh_url}")
-        except Exception as mb_err:
-            logger.warning(f"Could not register BotMenuButton: {mb_err}")
+    # Reset Telegram Bot Menu Button back to default native menu
+    try:
+        await client(SetBotMenuButtonRequest(
+            user_id=InputUserEmpty(),
+            button=BotMenuButtonDefault()
+        ))
+        logger.info("Reset persistent Telegram BotMenuButton to default.")
+    except Exception as mb_err:
+        logger.warning(f"Could not reset BotMenuButton: {mb_err}")
 
     try:
         await client.run_until_disconnected()
