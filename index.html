@@ -884,22 +884,39 @@
     <!-- ============================================================== -->
     <main id="tab-studio" class="tab-content active">
         
+        <!-- AI Auto-Pilot Banner -->
+        <div class="card" style="background: linear-gradient(135deg, rgba(0, 242, 254, 0.15), rgba(79, 70, 229, 0.15)); border: 1px solid rgba(0, 242, 254, 0.3);">
+            <div class="card-header">
+                <span class="card-title">🤖 100% AI АВТО-ПІЛОТ</span>
+                <span class="card-badge" style="background: #10b981;">АКТИВНО</span>
+            </div>
+            <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.6; padding-top: 4px;">
+                ✨ <b>ШІ зробить все повністю сам:</b><br>
+                • ⏱ <b>Авто-вибір часу:</b> знайде вірусний хайлайт та кульмінацію<br>
+                • 📝 <b>Авто-заголовок:</b> згенерує клікбейтний High-CTR тайтл<br>
+                • 📄 <b>Авто-опис & Теги:</b> складе SEO опис та вірусні хештеги <code>#fyp #viral #рек</code>
+            </div>
+        </div>
+
         <!-- Video Source Input -->
         <div class="card">
             <div class="card-header">
-                <span class="card-title">🔗 Джерело Відео</span>
-                <span class="card-badge">YouTube / TikTok</span>
+                <span class="card-title">🔗 Джерело Відео (YouTube / TikTok)</span>
+                <span class="card-badge">Необов'язково</span>
             </div>
             <div class="input-group">
-                <input type="text" id="video-url" class="input-field" placeholder="Вставте посилання на YouTube / Shorts / TikTok...">
+                <input type="text" id="video-url" class="input-field" placeholder="Вставте посилання або надішліть файл боту...">
                 <button class="input-action-btn" onclick="pasteClipboard()">📋 Вставити</button>
             </div>
+            <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
+                💡 Якщо посилання немає, просто тисніть кнопку нижче і надішліть відео файлом у бот!
+            </p>
         </div>
 
         <!-- Target Platform -->
         <div class="card">
             <div class="card-header">
-                <span class="card-title">🎯 Цільова Платформа</span>
+                <span class="card-title">🎯 Формат Платформи</span>
             </div>
             <div class="segmented-control">
                 <button class="segmented-btn active" id="btn-plat-tt" onclick="selectPlatform('tiktok')">
@@ -911,75 +928,10 @@
             </div>
         </div>
 
-        <!-- Feature Switches -->
-        <div class="card">
-            <div class="card-header">
-                <span class="card-title">⚙️ AI Модулі & Ефекти</span>
-                <span class="card-badge">Авто-монтаж</span>
-            </div>
-            <div class="toggle-list">
-                <div class="toggle-item">
-                    <div class="toggle-info">
-                        <div class="toggle-icon">🎣</div>
-                        <div class="toggle-label">
-                            <h4>AI Хук (0:00)</h4>
-                            <p>Gemini знайде піковий момент для утримання уваги</p>
-                        </div>
-                    </div>
-                    <label class="switch">
-                        <input type="checkbox" id="toggle-hook" checked onchange="hapticFeedback()">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-
-                <div class="toggle-item">
-                    <div class="toggle-info">
-                        <div class="toggle-icon">📢</div>
-                        <div class="toggle-label">
-                            <h4>Рекламний банер</h4>
-                            <p>Стоп-кадр + інтеграція промо-відео</p>
-                        </div>
-                    </div>
-                    <label class="switch">
-                        <input type="checkbox" id="toggle-banner" checked onchange="hapticFeedback()">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-
-                <div class="toggle-item">
-                    <div class="toggle-info">
-                        <div class="toggle-icon">🪤</div>
-                        <div class="toggle-label">
-                            <h4>Вірусний байт-елемент</h4>
-                            <p>Заклик зберегти / підписатися для росту охоплення</p>
-                        </div>
-                    </div>
-                    <label class="switch">
-                        <input type="checkbox" id="toggle-bait" checked onchange="hapticFeedback()">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-
-                <div class="toggle-item">
-                    <div class="toggle-info">
-                        <div class="toggle-icon">🔤</div>
-                        <div class="toggle-label">
-                            <h4>Караоке-субтитри (AI)</h4>
-                            <p>Groq Whisper динамічні слова з автопереносом</p>
-                        </div>
-                    </div>
-                    <label class="switch">
-                        <input type="checkbox" id="toggle-subs" checked onchange="hapticFeedback()">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-            </div>
-        </div>
-
         <!-- Subtitle Styles Grid -->
         <div class="card">
             <div class="card-header">
-                <span class="card-title">🎨 Стиль Караоке-Субтитрів</span>
+                <span class="card-title">🎨 Стиль Караоке-Субтитрів (AI)</span>
             </div>
             <div class="styles-grid">
                 <div class="style-card active" onclick="selectStyle(this, 'mrbeast')">
@@ -1001,49 +953,73 @@
             </div>
         </div>
 
-        <!-- Interactive Timeline Trimmer -->
+        <!-- Feature Switches -->
         <div class="card">
             <div class="card-header">
-                <span class="card-title">⏱ Підрізка Таймлайну</span>
-                <span id="timeline-duration-badge" class="card-badge">30.0 сек</span>
+                <span class="card-title">⚙️ AI Ефекти & Вірусність</span>
             </div>
-            <div class="timeline-box">
-                <div class="timeline-visual">
-                    <div class="timeline-selection" id="timeline-selection">
-                        <span id="timeline-label">0:00 — 0:30</span>
+            <div class="toggle-list">
+                <div class="toggle-item">
+                    <div class="toggle-info">
+                        <div class="toggle-icon">🎣</div>
+                        <div class="toggle-label">
+                            <h4>AI Хук (0:00)</h4>
+                            <p>Пошук вірусного початку для утримання уваги</p>
+                        </div>
                     </div>
+                    <label class="switch">
+                        <input type="checkbox" id="toggle-hook" checked onchange="hapticFeedback()">
+                        <span class="slider"></span>
+                    </label>
                 </div>
-                <div class="time-inputs">
-                    <div class="time-cell">
-                        <label>Початок (сек)</label>
-                        <input type="number" id="start-time" value="0.0" step="1" min="0" onchange="updateTimeline()">
-                    </div>
-                    <div class="time-cell">
-                        <label>Кінець (сек)</label>
-                        <input type="number" id="end-time" value="30.0" step="1" min="1" onchange="updateTimeline()">
-                    </div>
-                </div>
-                <div class="quick-presets">
-                    <button class="preset-btn" onclick="applyPreset(0, 0)">🎯 AI Авто</button>
-                    <button class="preset-btn" onclick="applyPreset(0, 30)">⚡️ 30 сек</button>
-                    <button class="preset-btn" onclick="applyPreset(0, 60)">🔥 60 сек</button>
-                </div>
-            </div>
-        </div>
 
-        <!-- SEO Clickbait Title -->
-        <div class="card">
-            <div class="card-header">
-                <span class="card-title">📝 Заголовок & SEO</span>
-            </div>
-            <div class="input-group">
-                <input type="text" id="seo-title" class="input-field" placeholder="Клікбейтний заголовок або авто..." value="ЭПИЧНЫЙ МОМЕНТ 😱">
+                <div class="toggle-item">
+                    <div class="toggle-info">
+                        <div class="toggle-icon">📢</div>
+                        <div class="toggle-label">
+                            <h4>Рекламний банер</h4>
+                            <p>Промо-інтеграція та стоп-кадр</p>
+                        </div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="toggle-banner" checked onchange="hapticFeedback()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <div class="toggle-item">
+                    <div class="toggle-info">
+                        <div class="toggle-icon">🪤</div>
+                        <div class="toggle-label">
+                            <h4>Вірусний байт-елемент</h4>
+                            <p>Заклик зберегти ролик для росту в рекомендаціях</p>
+                        </div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="toggle-bait" checked onchange="hapticFeedback()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <div class="toggle-item">
+                    <div class="toggle-info">
+                        <div class="toggle-icon">🔤</div>
+                        <div class="toggle-label">
+                            <h4>Динамічні Караоке-субтитри</h4>
+                            <p>Синхронізація слів через Groq Whisper Large</p>
+                        </div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="toggle-subs" checked onchange="hapticFeedback()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
             </div>
         </div>
 
         <!-- Launch Button -->
-        <button class="btn-launch" onclick="launchProcessing()">
-            <span>🚀</span> ЗАПУСТИТИ AI ОБРОБКУ ВІДЕО
+        <button class="btn-launch" onclick="launchProcessing()" style="margin-top: 15px; margin-bottom: 25px;">
+            <span>🚀</span> ЗАПУСТИТИ ПОВНИЙ AI АВТОМОНТАЖ
         </button>
 
     </main>
@@ -1378,23 +1354,12 @@
         function launchProcessing() {
             hapticFeedback('medium');
             const urlInput = document.getElementById("video-url");
-            const url = urlInput.value.trim();
+            const url = urlInput ? urlInput.value.trim() : "";
 
-            if (!url) {
-                showToast("Вставте посилання на відео з YouTube або TikTok!", "⚠️");
-                urlInput.focus();
-                urlInput.style.borderColor = "var(--accent-red)";
-                setTimeout(() => { urlInput.style.borderColor = "var(--border-glass)"; }, 2500);
-                return;
-            }
-
-            const start = parseFloat(document.getElementById("start-time").value) || 0;
-            const end = parseFloat(document.getElementById("end-time").value) || 0;
-            const hook = document.getElementById("toggle-hook").checked;
-            const banner = document.getElementById("toggle-banner").checked;
-            const bait = document.getElementById("toggle-bait").checked;
-            const subs = document.getElementById("toggle-subs").checked;
-            const seoTitle = document.getElementById("seo-title").value.trim();
+            const hook = document.getElementById("toggle-hook") ? document.getElementById("toggle-hook").checked : true;
+            const banner = document.getElementById("toggle-banner") ? document.getElementById("toggle-banner").checked : true;
+            const bait = document.getElementById("toggle-bait") ? document.getElementById("toggle-bait").checked : true;
+            const subs = document.getElementById("toggle-subs") ? document.getElementById("toggle-subs").checked : true;
 
             const btn = document.querySelector(".btn-launch");
             if (btn) {
@@ -1411,12 +1376,11 @@
                 banner: banner,
                 bait: bait,
                 subs: subs,
-                start_time: start,
-                end_time: end,
-                seo_title: seoTitle
+                auto_ai: true
             };
 
-            sendTelegramPayload(payload, "Завдання прийнято! Переходимо в чат...");
+            const msg = url ? "Завдання прийнято! Переходимо в чат..." : "AI-налаштування збережено! Переходимо в чат...";
+            sendTelegramPayload(payload, msg);
         }
 
         // Action: Buy Stars Package
