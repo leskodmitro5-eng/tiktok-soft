@@ -2648,11 +2648,12 @@ async def main():
     # Register persistent Telegram WebApp Menu Button (beside the message input)
     if WEBAPP_URL:
         try:
+            fresh_url = f"{WEBAPP_URL.rstrip('/')}/?v={int(time.time())}"
             await client(SetBotMenuButtonRequest(
                 user_id=InputUserEmpty(),
-                button=BotMenuButton(text="🎬 AI Studio", url=WEBAPP_URL)
+                button=BotMenuButton(text="🎬 AI Studio", url=fresh_url)
             ))
-            logger.info(f"Registered persistent Telegram WebApp Menu Button -> {WEBAPP_URL}")
+            logger.info(f"Registered persistent Telegram WebApp Menu Button -> {fresh_url}")
         except Exception as mb_err:
             logger.warning(f"Could not register BotMenuButton: {mb_err}")
 
