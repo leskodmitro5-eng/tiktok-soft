@@ -151,24 +151,62 @@ def generate_karaoke_ass(
     font_name: str = "Arial Black",
     font_size: int = 50,
     primary_color: str = "&H00FFFFFF",
-    highlight_color: str = "&H0000E5FF"
+    highlight_color: str = "&H0000E5FF",
+    style_name: str = "mrbeast"
 ) -> bool:
     """
     Generates an Advanced SubStation Alpha (.ass) subtitle file.
-    Uses Hormozi / MrBeast viral subtitle styling:
-    - Uppercase bold typography
-    - Yellow / Gold karaoke word highlight ({\\kf<centiseconds>})
-    - Thick black outline + drop shadow
-    - Smart multi-line wrapping and adaptive font scaling (never clips on 9:16 borders)
-    - Safe-zone bottom-center placement above TikTok UI & bait
+    Supports preset styles:
+    - 'mrbeast': Gold / Yellow highlight, bold thick black outline.
+    - 'hormozi': Clean white with electric green highlight.
+    - 'neon': Cyberpunk Cyan text with Neon Magenta highlight.
+    - 'fire': Flame gold with intense red highlight.
     """
+    style_presets = {
+        "mrbeast": {
+            "primary": "&H00FFFFFF",
+            "highlight": "&H0000E5FF",  # Gold / Yellow in ASS &HAABBGGRR
+            "outline": "&H00000000",
+            "outline_w": 6,
+            "shadow_w": 3
+        },
+        "hormozi": {
+            "primary": "&H00FFFFFF",
+            "highlight": "&H0033FF55",  # Vibrant Green
+            "outline": "&H00000000",
+            "outline_w": 5,
+            "shadow_w": 2
+        },
+        "neon": {
+            "primary": "&H00FFF200",    # Cyan
+            "highlight": "&H00FF00D4",  # Neon Pink/Magenta
+            "outline": "&H002A1100",
+            "outline_w": 5,
+            "shadow_w": 5
+        },
+        "fire": {
+            "primary": "&H0000E5FF",    # Yellow
+            "highlight": "&H000033FF",  # Flame Red
+            "outline": "&H00000044",
+            "outline_w": 6,
+            "shadow_w": 4
+        }
+    }
+
+    preset = style_presets.get(style_name.lower(), style_presets["mrbeast"])
+    p_color = preset["primary"] if not primary_color or primary_color == "&H00FFFFFF" else primary_color
+    h_color = preset["highlight"] if not highlight_color or highlight_color == "&H0000E5FF" else highlight_color
+    outline_col = preset["outline"]
+    outline_w = preset["outline_w"]
+    shadow_w = preset["shadow_w"]
+
     phrases = chunk_words_into_phrases(words, max_words=3, max_gap=0.45)
     if not phrases:
         logger.warning("No phrases generated for ASS subtitles.")
         return False
 
     ass_header = f"""[Script Info]
-Title: TikTok Viral Karaoke Subtitles
+Title: TikTok Viral Karaoke Subtitles ({style_name})
 ScriptType: v4.00+
 WrapStyle: 0
 ScaledBorderAndShadow: yes
@@ -178,7 +216,7 @@ PlayResY: {play_res_y}
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,{font_name},{font_size},{primary_color},{highlight_color},&H00000000,&H80000000,-1,0,0,0,100,100,1,0,1,6,3,2,30,30,{margin_v},1
+Style: Karaoke,{font_name},{font_size},{p_color},{h_color},{outline_col},&H80000000,-1,0,0,0,100,100,1,0,1,{outline_w},{shadow_w},2,30,30,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

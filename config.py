@@ -80,3 +80,7 @@ S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "").strip()
 S3_ACCESS_KEY_ID = os.getenv("S3_ACCESS_KEY_ID", "").strip()
 S3_SECRET_ACCESS_KEY = os.getenv("S3_SECRET_ACCESS_KEY", "").strip()
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "").strip()
+
+# Telegram Mini App WebApp URL (Public HTTPS URL e.g. https://your-domain.com or https://xxx.render.com)
+WEBAPP_URL = os.getenv("WEBAPP_URL", "").strip()
+

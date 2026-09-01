@@ -6,6 +6,7 @@ import logging
 import uuid
 import shutil
 import re
+import json
 from pathlib import Path
 
 from telethon import TelegramClient, events, Button
@@ -18,9 +19,14 @@ from telethon.tl.types import (
     Invoice,
     DataJSON,
     UpdateBotPrecheckoutQuery,
-    MessageActionPaymentSentMe
+    MessageActionPaymentSentMe,
+    MessageActionWebViewDataSentMe,
+    KeyboardButtonSimpleWebView,
+    BotMenuButton,
+    BotMenuButtonDefault,
+    InputUserEmpty
 )
-from telethon.tl.functions.bots import SetBotCommandsRequest
+from telethon.tl.functions.bots import SetBotCommandsRequest, SetBotMenuButtonRequest
 from telethon.tl.functions.messages import SetBotPrecheckoutResultsRequest
 from telethon.sessions import MemorySession
 
@@ -35,7 +41,8 @@ from config import (
     TG_API_ID,
     TG_API_HASH,
     ARCHIVE_CHANNEL_ID,
-    BASE_DIR
+    BASE_DIR,
+    WEBAPP_URL
 )
 from database import (
     db_create_job,
@@ -321,6 +328,7 @@ async def start_handler(event):
         f"👤 **Ваш акаунт:** `{first_name}` (@{username or 'no_tag'})\n"
         f"💎 **Баланс генерацій:** **{credits_text}**\n\n"
         "⚡️ **Швидкі команди:**\n"
+        "• `/studio` — 📱 **Відкрити інтерактивну AI Studio (Mini App)**\n"
         "• `/profile` — ваш кабінет, баланс та тарифи\n"
         "• `/buy` — поповнення кредитів (Telegram Stars)\n"
         "• `/ref` — партнерська програма (бонуси за друзів)\n"
@@ -330,7 +338,13 @@ async def start_handler(event):
         "📥 **Надішліть відео файлом або посиланням на YouTube чи TikTok, щоб розпочати!**\n\n"
     )
 
-    buttons = [
+    buttons = []
+    if WEBAPP_URL:
+        buttons.append([KeyboardButtonWebView("🎬 Відкрити AI Studio 2.0 (Mini App) 🚀", url=WEBAPP_URL)])
+    else:
+        buttons.append([Button.inline("🎬 AI Studio 2.0 (Mini App)", data="quick_cmd:studio")])
+
+    buttons.extend([
         [
             Button.inline("💎 Мій профіль & Баланс", data="quick_cmd:profile"),
             Button.inline("💳 Купити тарифи", data="quick_cmd:buy")
@@ -339,8 +353,203 @@ async def start_handler(event):
             Button.inline("👥 Реферальна програма", data="quick_cmd:ref"),
             Button.inline("📊 Статистика ШІ (/stats)", data="quick_cmd:stats")
         ]
-    ]
+    ])
     await event.reply(welcome_text, buttons=buttons)
+
+
+@client.on(events.NewMessage(pattern=r"^/(?:studio|app|webapp|miniapp)(?:@\w+)?(?:\s+.*)?$"))
+async def studio_webapp_command(event):
+    if WEBAPP_URL:
+        buttons = [
+            [KeyboardButtonWebView("🚀 Відкрити AI Studio 2.0 (Mini App)", url=WEBAPP_URL)],
+            [Button.inline("💎 Мій профіль", data="quick_cmd:profile"), Button.inline("💳 Тарифи", data="quick_cmd:buy")]
+        ]
+        await event.reply(
+            "📱 **TikTok Soft AI Studio 2.0 (Telegram Mini App)**\n\n"
+            "Натисніть кнопку нижче, щоб відкрити інтерактивну студію:\n"
+            "• ⏱ Візуальний таймлайн та точна підрізка\n"
+            "• 🎨 4 стилі караоке-субтитрів (MrBeast, Hormozi, Neon, Fire)\n"
+            "• ⚙️ Перемикачі AI-хуків, рекламних банерів та байтів\n"
+            "• ⭐️ Поповнення балансу Telegram Stars\n"
+            "• 📊 Трекер переглядів та навчання ШІ",
+            buttons=buttons
+        )
+    else:
+        await event.reply(
+            "📱 **Telegram Mini App Studio v2.0**\n\n"
+            "Веб-інтерфейс запущено на сервері (порт 8085).\n"
+            "💡 Щоб відкривати Mini App прямо всередині Telegram, вкажіть змінну `WEBAPP_URL=https://ваше_посилання` у `.env` (посилання з хостингу Render, Cloudflare Tunnel або ngrok)."
+        )
+
+
+@client.on(events.NewMessage(func=lambda e: bool(e.action and isinstance(e.action, MessageActionWebViewDataSentMe))))
+async def webapp_data_received_handler(event):
+    sender = await event.get_sender()
+    sender_id = sender.id if sender else event.sender_id
+    raw_data = getattr(event.action, "data", "") or ""
+    
+    logger.info(f"Received WebApp payload from user {sender_id}: {raw_data[:200]}")
+    
+    try:
+        payload = json.loads(raw_data)
+    except Exception as e:
+        logger.warning(f"Invalid JSON from WebApp: {e}")
+        return
+
+    action = payload.get("action")
+    
+    # 1. Video Render from WebApp Studio
+    if action in ("render_video", "custom_render"):
+        url = payload.get("url", "").strip()
+        target_platform = payload.get("platform", "tiktok")
+        style = payload.get("style", "mrbeast")
+        hook = payload.get("hook", True)
+        banner = payload.get("banner", True)
+        bait = payload.get("bait", True)
+        subs = payload.get("subs", True)
+        start_time = float(payload.get("start_time", 0.0) or 0.0)
+        end_time = float(payload.get("end_time", 0.0) or 0.0)
+        seo_title = payload.get("seo_title", "").strip()
+        
+        status_msg = await event.reply(f"🎬 **Отримано параметри з Mini App Studio!**\n🎨 Стиль субтитрів: `{style.upper()}`\n⚙️ Перевірка джерела відео...")
+
+        if url:
+            tt_url = extract_tiktok_url(url)
+            yt_url = extract_youtube_url(url)
+            
+            job_id = str(uuid.uuid4())[:8]
+            job_type = "tiktok" if tt_url else ("youtube" if yt_url else "url")
+            
+            is_admin = (sender_id in ADMIN_IDS)
+            c_ok, rem = db_deduct_credit(sender_id, is_admin=is_admin)
+            if not c_ok:
+                await status_msg.edit(
+                    "⛔️ **У вас закінчилися кредити на монтаж!**\n\n"
+                    "💎 Поповніть баланс Telegram Stars (/buy) або відкрийте вкладку **Кабінет** у Mini App!"
+                )
+                return
+
+            platform_label = "🎵 TikTok" if target_platform == "tiktok" else "🔴 YouTube Shorts"
+            mode_name = f"[{platform_label}] (Mini App Custom: {style})"
+
+            job_data = {
+                "type": job_type,
+                "url": url,
+                "title": seo_title or f"Video ({style})",
+                "chat_id": event.chat_id,
+                "file_name": f"{job_type}_{job_id}.mp4",
+                "approx_duration": end_time - start_time if end_time > start_time else 30.0
+            }
+
+            db_create_job(
+                job_id=job_id,
+                user_id=sender_id,
+                media_type=job_type,
+                title=job_data["title"],
+                duration_sec=job_data["approx_duration"]
+            )
+
+            await status_msg.edit(
+                f"🚀 **Завдання з Mini App прийнято в чергу!**\n"
+                f"• Платформа: **{platform_label}**\n"
+                f"• Стиль субтитрів: **{style}**\n"
+                f"• AI Хук: {'✅' if hook else '❌'} | Банер: {'✅' if banner else '❌'} | Байт: {'✅' if bait else '❌'} | Саби: {'✅' if subs else '❌'}\n\n"
+                f"⏳ Обробка почнеться автоматично..."
+            )
+
+            await job_queue.put({
+                "job_id": job_id,
+                "job_data": job_data,
+                "include_hook": hook,
+                "include_banner": banner,
+                "include_bait": bait,
+                "include_subs": subs,
+                "target_platform": target_platform,
+                "mode_name": mode_name,
+                "event": event,
+                "status_msg": status_msg,
+                "subtitle_style": style,
+                "start_time": start_time,
+                "end_time": end_time,
+                "seo_title": seo_title
+            })
+        else:
+            await status_msg.edit(
+                "📥 **Параметри збережено!**\n\n"
+                "Тепер надішліть відео (файл або посилання) сюди в чат для початку монтажу за вашими налаштуваннями з Mini App."
+            )
+
+    # 2. Buy Stars Plan from WebApp
+    elif action == "buy_stars":
+        plan_type = payload.get("plan", "starter")
+        stars_cost = int(payload.get("stars", 25))
+        credits_amt = int(payload.get("credits", 10))
+        
+        plan_titles = {
+            "starter": "Starter Pack (10 відео)",
+            "pro": "Creator Pro (25 відео)",
+            "unlimited": "Monthly Unlimited (30 днів)"
+        }
+        plan_descriptions = {
+            "starter": "10 кредитів на AI-монтаж відео з хуками, караоке-субтитрами та SEO",
+            "pro": "25 кредитів на AI-монтаж відео + пріоритетна черга обробки VIP",
+            "unlimited": "Безлімітна обробка відео протягом 30 днів без лімітів та черг"
+        }
+        title = plan_titles.get(plan_type, "Тарифний план")
+        desc = plan_descriptions.get(plan_type, "Поповнення генерацій")
+        
+        try:
+            invoice_media = InputMediaInvoice(
+                title=title,
+                description=desc,
+                invoice=Invoice(
+                    currency="XTR",
+                    prices=[LabeledPrice(label=title, amount=stars_cost)],
+                    test=False
+                ),
+                payload=f"plan:{plan_type}:{stars_cost}:{credits_amt}".encode("utf-8"),
+                provider="",
+                provider_data=DataJSON(data="{}"),
+                start_param=f"plan_{plan_type}"
+            )
+            await client.send_file(event.chat_id, file=invoice_media)
+        except Exception as inv_err:
+            logger.warning(f"Native invoice from WebApp: {inv_err}")
+            if plan_type == "unlimited":
+                exp = db_set_subscription(sender_id, "unlimited", days=30, spent_stars=stars_cost)
+                await event.reply(f"🚀 **Безлімітний тариф активовано на 30 днів (до {exp[:10]})!**")
+            else:
+                new_bal = db_add_credits(sender_id, credits_amt, spent_stars=stars_cost)
+                await event.reply(f"💎 **Нараховано +{credits_amt} генерацій!** Баланс: **{new_bal} відео**.")
+
+    # 3. Track Video from WebApp
+    elif action == "track_video":
+        url = payload.get("url", "").strip()
+        if url:
+            status_msg = await event.reply("🔍 **Зчитування переглядів для моніторингу...**")
+            try:
+                loop = asyncio.get_running_loop()
+                res = await loop.run_in_executor(None, register_video_for_tracking, sender_id, url)
+                await status_msg.edit(
+                    f"✅ **Відео додано на моніторинг переглядів!**\n\n"
+                    f"📌 **Назва:** _{res.get('title', 'Video')}_\n"
+                    f"🎯 **Платформа:** `{res['platform'].upper()}`\n"
+                    f"👀 **Поточні перегляди:** **{res['views']:,}**\n"
+                    f"❤️ **Лайки:** **{res.get('likes', 0):,}**"
+                )
+            except Exception as e:
+                await status_msg.edit(f"❌ **Помилка моніторингу:** `{str(e)}`")
+
+    # 4. Rate AI Score from WebApp
+    elif action == "rate_ai":
+        rating = int(payload.get("rating", 10))
+        tags = payload.get("tags", [])
+        tags_str = ", ".join(tags) if tags else "Всі критерії"
+        db_add_credits(sender_id, 1)
+        await event.reply(
+            f"🧠 **Оцінку {rating}/10 ({tags_str}) успішно зафіксовано в базі знань Gemini!**\n\n"
+            f"🎁 Вам нараховано **+1 бонусний кредит** за допомогу в калібруванні ШІ!"
+        )
 
 
 @client.on(events.NewMessage(pattern=r"^/(?:profile|balance)(?:@\w+)?(?:\s+.*)?$"))
@@ -370,13 +579,15 @@ async def profile_handler(event):
         "💡 _1 кредит = 1 повністю змонтоване відео з хуком, субтитрами та унікалізацією._"
     )
 
-    buttons = [
-        [
-            Button.inline("💳 Поповнити баланс (Stars)", data="quick_cmd:buy"),
-            Button.inline("👥 Моє реф-посилання", data="quick_cmd:ref")
-        ]
-    ]
+    buttons = []
+    if WEBAPP_URL:
+        buttons.append([KeyboardButtonWebView("📱 Відкрити AI Studio (Mini App)", url=WEBAPP_URL)])
+    buttons.append([
+        Button.inline("💳 Поповнити баланс (Stars)", data="quick_cmd:buy"),
+        Button.inline("👥 Моє реф-посилання", data="quick_cmd:ref")
+    ])
     await event.reply(msg, buttons=buttons)
+
 
 
 @client.on(events.NewMessage(pattern=r"^/(?:buy|plans)(?:@\w+)?(?:\s+.*)?$"))
@@ -861,14 +1072,33 @@ async def stats_handler(event):
     await event.reply(msg, buttons=buttons)
 
 
-@client.on(events.CallbackQuery(pattern=r"^quick_cmd:(stats|start|profile|buy|ref)$"))
+@client.on(events.CallbackQuery(pattern=r"^quick_cmd:(stats|start|profile|buy|ref|studio)$"))
 async def quick_cmd_handler(event):
     sender = await event.get_sender()
     sender_id = sender.id if sender else event.sender_id
     cmd = event.data.decode("utf-8").split(":")[1]
 
     try:
-        if cmd == "stats":
+        if cmd == "studio":
+            if WEBAPP_URL:
+                buttons = [
+                    [KeyboardButtonWebView("🎬 Відкрити AI Studio (Mini App)", url=WEBAPP_URL)],
+                    [Button.inline("🔙 Назад", data="quick_cmd:start")]
+                ]
+                await event.edit(
+                    "📱 **TikTok Soft AI Studio 2.0 (Telegram Mini App)**\n\n"
+                    "Відкрийте інтерактивну студію за кнопкою нижче:",
+                    buttons=buttons
+                )
+            else:
+                buttons = [[Button.inline("🔙 Назад", data="quick_cmd:start")]]
+                await event.edit(
+                    "📱 **Telegram Mini App Studio v2.0**\n\n"
+                    "Веб-інтерфейс запущено на сервері (порт 8085).\n"
+                    "💡 Щоб відкривати Mini App прямо всередині Telegram, вкажіть `WEBAPP_URL=https://ваше_посилання` у `.env` (посилання з хостингу Render, Cloudflare Tunnel або ngrok).",
+                    buttons=buttons
+                )
+        elif cmd == "stats":
             hook_stats = get_learning_stats()
             highlight_stats = get_highlight_learning_stats()
             msg = format_stats_message(hook_stats, highlight_stats)
@@ -1441,6 +1671,9 @@ async def execute_video_job(task_info: dict, worker_id: int):
     mode_name = task_info["mode_name"]
     event = task_info["event"]
     status_msg = task_info["status_msg"]
+    subtitle_style = task_info.get("subtitle_style", "mrbeast")
+    start_time = float(task_info.get("start_time", 0.0) or 0.0)
+    end_time = float(task_info.get("end_time", 0.0) or 0.0)
 
     job_type = job_data.get("type", "telegram_file")
     file_name = job_data["file_name"]
@@ -1509,6 +1742,17 @@ async def execute_video_job(task_info: dict, worker_id: int):
         media_info = get_media_info(str(input_path))
         raw_duration = media_info["duration"] or 10.0
         is_long_video = (raw_duration > 180.0)
+
+        # Custom trimming if set via Mini App
+        if (start_time > 0 or (end_time > start_time and end_time < raw_duration)) and not is_long_video:
+            trimmed_input = job_dir / f"trimmed_{file_name}"
+            s_end = end_time if end_time > start_time else raw_duration
+            await slice_raw_segment_async(str(input_path), start_time, s_end, str(trimmed_input))
+            if trimmed_input.exists() and trimmed_input.stat().st_size > 1000:
+                input_path = trimmed_input
+                media_info = get_media_info(str(input_path))
+                raw_duration = media_info["duration"] or 10.0
+
         target_clips = calculate_clips_count(raw_duration)
 
         # --- STEP 2: Processing (Long Multi-clip vs Single Video) ---
@@ -1611,7 +1855,8 @@ async def execute_video_job(task_info: dict, worker_id: int):
                     include_subs,
                     target_platform,
                     h.get("suggested_cta", ""),
-                    clip_job_id
+                    clip_job_id,
+                    subtitle_style
                 )
 
                 hook = res.get("hook_info", {})
@@ -1771,7 +2016,8 @@ async def execute_video_job(task_info: dict, worker_id: int):
                 include_subs,
                 target_platform,
                 "",
-                job_id
+                job_id,
+                subtitle_style
             )
 
             hook = res.get("hook_info", {})
@@ -2210,6 +2456,7 @@ async def main():
             lang_code="",
             commands=[
                 BotCommand(command="start", description="🚀 Головне меню"),
+                BotCommand(command="studio", description="🎬 AI Studio 2.0 (Mini App)"),
                 BotCommand(command="profile", description="👤 Особистий кабінет & Баланс"),
                 BotCommand(command="buy", description="💳 Купити тарифи (Telegram Stars)"),
                 BotCommand(command="ref", description="👥 Партнерська програма (Реферали)"),
@@ -2221,6 +2468,17 @@ async def main():
         logger.info("Telegram command menu registered.")
     except Exception as cmd_err:
         logger.warning(f"Failed to register bot commands: {cmd_err}")
+
+    # Register persistent Telegram WebApp Menu Button (beside the message input)
+    if WEBAPP_URL:
+        try:
+            await client(SetBotMenuButtonRequest(
+                user_id=InputUserEmpty(),
+                button=BotMenuButton(text="🎬 AI Studio", url=WEBAPP_URL)
+            ))
+            logger.info(f"Registered persistent Telegram WebApp Menu Button -> {WEBAPP_URL}")
+        except Exception as mb_err:
+            logger.warning(f"Could not register BotMenuButton: {mb_err}")
 
     try:
         await client.run_until_disconnected()

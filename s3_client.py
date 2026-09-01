@@ -1,9 +1,17 @@
 import os
 import logging
 from pathlib import Path
-import boto3
-from botocore.config import Config
-from botocore.exceptions import ClientError
+try:
+    import boto3
+    from botocore.config import Config
+    from botocore.exceptions import ClientError
+    _BOTO3_AVAILABLE = True
+except ImportError:
+    _BOTO3_AVAILABLE = False
+    boto3 = None
+    Config = None
+    ClientError = Exception
+
 import config
 
 logger = logging.getLogger("S3Client")
@@ -16,8 +24,11 @@ def get_s3_client():
     if _s3_client is not None:
         return _s3_client
 
-    if not is_s3_configured():
-        logger.warning("S3/R2 cloud storage is not fully configured. Missing environment variables.")
+    if not _BOTO3_AVAILABLE or not is_s3_configured():
+        if not _BOTO3_AVAILABLE:
+            logger.debug("boto3 is not installed. S3 upload will be skipped.")
+        else:
+            logger.debug("S3/R2 cloud storage is not fully configured. Missing environment variables.")
         return None
 
     try:

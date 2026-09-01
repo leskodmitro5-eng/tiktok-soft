@@ -382,7 +382,8 @@ async def process_video_pipeline_async(
     include_subtitles: bool = True,
     target_platform: str = "tiktok",
     suggested_cta: str = "",
-    job_id: str = ""
+    job_id: str = "",
+    subtitle_style: str = "mrbeast"
 ) -> dict:
     """
     High-performance Asynchronous Processing Pipeline:
@@ -703,7 +704,14 @@ async def process_video_pipeline_async(
                     if os.path.exists(sub_audio):
                         sub_words = transcribe_words_with_whisper(sub_audio, groq_api_key)
                         if sub_words:
-                            ok_ass = generate_karaoke_ass(sub_words, ass_path, play_res_x=W, play_res_y=H, margin_v=540)
+                            ok_ass = generate_karaoke_ass(
+                                sub_words,
+                                ass_path,
+                                play_res_x=W,
+                                play_res_y=H,
+                                margin_v=540,
+                                style_name=subtitle_style
+                            )
                             if ok_ass and os.path.exists(ass_path):
                                 subtitles_applied = True
                 except Exception as sub_err:

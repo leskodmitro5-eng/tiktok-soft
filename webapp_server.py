@@ -10,6 +10,18 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "webapp"
 
 
+@web.middleware
+async def cors_middleware(request, handler):
+    if request.method == "OPTIONS":
+        response = web.Response()
+    else:
+        response = await handler(request)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+    return response
+
+
 async def handle_index(request):
     """Serves index.html for Telegram WebApp."""
     index_file = STATIC_DIR / "index.html"
@@ -21,10 +33,16 @@ async def handle_index(request):
     )
 
 
+async def handle_health(request):
+    """Health check endpoint for cloud monitoring."""
+    return web.json_response({"status": "ok", "app": "TikTok Soft AI Studio", "version": "2.0.0"})
+
+
 def create_webapp_app():
-    app = web.Application()
+    app = web.Application(middlewares=[cors_middleware])
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     app.router.add_get("/", handle_index)
+    app.router.add_get("/health", handle_health)
     try:
         app.router.add_static("/static/", path=str(STATIC_DIR), name="static")
     except Exception as e:
@@ -41,6 +59,7 @@ async def start_webapp_server(host: str = "0.0.0.0", port: int = 8085):
     await site.start()
     logger.info(f"Telegram Mini App Studio live at http://{host}:{port}/")
     return runner
+
 
 
 if __name__ == "__main__":
