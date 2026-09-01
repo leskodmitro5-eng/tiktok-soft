@@ -21,6 +21,7 @@ from telethon.tl.types import (
     UpdateBotPrecheckoutQuery,
     MessageActionPaymentSentMe,
     MessageActionWebViewDataSentMe,
+    KeyboardButtonWebView,
     KeyboardButtonSimpleWebView,
     BotMenuButton,
     BotMenuButtonDefault,
@@ -309,8 +310,29 @@ async def start_handler(event):
     username = sender.username or ""
     first_name = sender.first_name or ""
 
-    # Parse potential referral argument: /start ref_123456
     ref_arg = event.pattern_match.group(1)
+    
+    # Handle deep link from WebApp (Plan purchase or direct action)
+    if ref_arg:
+        if ref_arg.startswith("plan_"):
+            plan_type = ref_arg.replace("plan_", "")
+            plan_costs = {"starter": (25, 10), "pro": (50, 25), "unlimited": (100, 0)}
+            stars, creds = plan_costs.get(plan_type, (25, 10))
+            await handle_webapp_payload(sender_id, event.chat_id, event.reply, {
+                "action": "buy_stars", "plan": plan_type, "stars": stars, "credits": creds
+            })
+            return
+        elif ref_arg.startswith("app_"):
+            try:
+                import base64
+                raw_json = base64.urlsafe_b64decode(ref_arg.replace("app_", "") + "==").decode("utf-8")
+                p = json.loads(raw_json)
+                await handle_webapp_payload(sender_id, event.chat_id, event.reply, p)
+                return
+            except Exception as e:
+                logger.warning(f"Error decoding app_ payload: {e}")
+
+    # Parse potential referral argument: /start ref_123456
     referrer_id = None
     if ref_arg and ref_arg.startswith("ref_"):
         try:
@@ -382,22 +404,11 @@ async def studio_webapp_command(event):
         )
 
 
-@client.on(events.NewMessage(func=lambda e: bool(e.action and isinstance(e.action, MessageActionWebViewDataSentMe))))
-async def webapp_data_received_handler(event):
-    sender = await event.get_sender()
-    sender_id = sender.id if sender else event.sender_id
-    raw_data = getattr(event.action, "data", "") or ""
-    
-    logger.info(f"Received WebApp payload from user {sender_id}: {raw_data[:200]}")
-    
-    try:
-        payload = json.loads(raw_data)
-    except Exception as e:
-        logger.warning(f"Invalid JSON from WebApp: {e}")
-        return
-
+async def handle_webapp_payload(sender_id: int, chat_id: int, reply_fn, payload: dict):
+    """Unified handler for data sent from Mini App (via WebAppData or deep link)."""
     action = payload.get("action")
-    
+    logger.info(f"Processing WebApp payload for user {sender_id}: {action} -> {payload}")
+
     # 1. Video Render from WebApp Studio
     if action in ("render_video", "custom_render"):
         url = payload.get("url", "").strip()
@@ -411,7 +422,7 @@ async def webapp_data_received_handler(event):
         end_time = float(payload.get("end_time", 0.0) or 0.0)
         seo_title = payload.get("seo_title", "").strip()
         
-        status_msg = await event.reply(f"🎬 **Отримано параметри з Mini App Studio!**\n🎨 Стиль субтитрів: `{style.upper()}`\n⚙️ Перевірка джерела відео...")
+        status_msg = await reply_fn(f"🎬 **Отримано завдання з AI Studio 2.0!**\n🎨 Стиль субтитрів: `{style.upper()}`\n⚙️ Перевірка параметрів...")
 
         if url:
             tt_url = extract_tiktok_url(url)
@@ -430,13 +441,13 @@ async def webapp_data_received_handler(event):
                 return
 
             platform_label = "🎵 TikTok" if target_platform == "tiktok" else "🔴 YouTube Shorts"
-            mode_name = f"[{platform_label}] (Mini App Custom: {style})"
+            mode_name = f"[{platform_label}] (Mini App: {style})"
 
             job_data = {
                 "type": job_type,
                 "url": url,
                 "title": seo_title or f"Video ({style})",
-                "chat_id": event.chat_id,
+                "chat_id": chat_id,
                 "file_name": f"{job_type}_{job_id}.mp4",
                 "approx_duration": end_time - start_time if end_time > start_time else 30.0
             }
@@ -449,15 +460,7 @@ async def webapp_data_received_handler(event):
                 duration_sec=job_data["approx_duration"]
             )
 
-            await status_msg.edit(
-                f"🚀 **Завдання з Mini App прийнято в чергу!**\n"
-                f"• Платформа: **{platform_label}**\n"
-                f"• Стиль субтитрів: **{style}**\n"
-                f"• AI Хук: {'✅' if hook else '❌'} | Банер: {'✅' if banner else '❌'} | Байт: {'✅' if bait else '❌'} | Саби: {'✅' if subs else '❌'}\n\n"
-                f"⏳ Обробка почнеться автоматично..."
-            )
-
-            await job_queue.put({
+            task_info = {
                 "job_id": job_id,
                 "job_data": job_data,
                 "include_hook": hook,
@@ -465,17 +468,32 @@ async def webapp_data_received_handler(event):
                 "include_bait": bait,
                 "include_subs": subs,
                 "target_platform": target_platform,
-                "mode_name": mode_name,
-                "event": event,
-                "status_msg": status_msg,
                 "subtitle_style": style,
                 "start_time": start_time,
                 "end_time": end_time,
-                "seo_title": seo_title
-            })
+                "mode_name": mode_name,
+                "event": None,
+                "status_msg": status_msg
+            }
+
+            job_queue.put_nowait(task_info)
+            q_pos = job_queue.qsize()
+            logger.info(f"Task {job_id} queued via Mini App for user {sender_id}. Queue position: {q_pos}")
+            await status_msg.edit(
+                f"📥 **Завдання #{job_id} успішно додано в чергу монтажу!**\n"
+                f"• Позиція: **#{q_pos}**\n"
+                f"• Платформа: **{platform_label}**\n"
+                f"• Стиль субтитрів: `{style.upper()}`\n"
+                f"• Таймлайн: `{start_time:.1f}с - {end_time:.1f}с`\n"
+                f"• Залишок балансу: **{rem if not is_admin else 'Безліміт'}** відео\n\n"
+                "⏳ _Воркер розпочинає обробку..._"
+            )
         else:
             await status_msg.edit(
-                "📥 **Параметри збережено!**\n\n"
+                f"⚙️ **Параметри збережено!**\n\n"
+                f"• Стиль субтитрів: `{style.upper()}`\n"
+                f"• Формат: `{target_platform.upper()}`\n"
+                f"• Хук: {'✅' if hook else '❌'} | Банер: {'✅' if banner else '❌'} | Байт: {'✅' if bait else '❌'} | Субтитри: {'✅' if subs else '❌'}\n\n"
                 "Тепер надішліть відео (файл або посилання) сюди в чат для початку монтажу за вашими налаштуваннями з Mini App."
             )
 
@@ -512,7 +530,7 @@ async def webapp_data_received_handler(event):
                 provider_data=DataJSON(data="{}"),
                 start_param=f"plan_{plan_type}"
             )
-            await client.send_file(event.chat_id, file=invoice_media)
+            await client.send_file(chat_id, file=invoice_media)
         except Exception as inv_err:
             logger.warning(f"Native invoice from WebApp: {inv_err}")
             if plan_type == "unlimited":

@@ -1331,10 +1331,63 @@
             }
         }
 
+        // Centralized Dispatcher for Mini App Actions
+        function sendTelegramPayload(payload, successMsg = "Дані успішно передано в бот!") {
+            hapticFeedback('success');
+            showToast(successMsg, "🚀");
+            
+            let sent = false;
+            if (tg) {
+                try {
+                    tg.sendData(JSON.stringify(payload));
+                    sent = true;
+                } catch (e) {
+                    console.warn("tg.sendData could not be used (menu button mode):", e);
+                }
+
+                // If sendData is not allowed (e.g. Menu Button), use deep link fallback
+                if (!sent) {
+                    try {
+                        let b64 = "";
+                        if (payload.action === "buy_stars") {
+                            b64 = `plan_${payload.plan || 'starter'}`;
+                        } else {
+                            b64 = `app_${btoa(unescape(encodeURIComponent(JSON.stringify(payload))))}`;
+                        }
+                        const botLink = `https://t.me/tiktoksoftmusor_bot?start=${b64}`;
+                        if (tg.openTelegramLink) {
+                            tg.openTelegramLink(botLink);
+                        } else {
+                            window.location.href = botLink;
+                        }
+                    } catch (e2) {
+                        console.error("Deep link fallback failed:", e2);
+                    }
+                }
+
+                // Auto close webview so user lands right on the bot's response in chat
+                setTimeout(() => {
+                    try { tg.close(); } catch (e) {}
+                }, 600);
+            } else {
+                console.log("Mock Environment Payload:", payload);
+            }
+        }
+
         // Action: Launch Video Processing
         function launchProcessing() {
             hapticFeedback('medium');
-            const url = document.getElementById("video-url").value.trim();
+            const urlInput = document.getElementById("video-url");
+            const url = urlInput.value.trim();
+
+            if (!url) {
+                showToast("Вставте посилання на відео з YouTube або TikTok!", "⚠️");
+                urlInput.focus();
+                urlInput.style.borderColor = "var(--accent-red)";
+                setTimeout(() => { urlInput.style.borderColor = "var(--border-glass)"; }, 2500);
+                return;
+            }
+
             const start = parseFloat(document.getElementById("start-time").value) || 0;
             const end = parseFloat(document.getElementById("end-time").value) || 0;
             const hook = document.getElementById("toggle-hook").checked;
@@ -1342,6 +1395,12 @@
             const bait = document.getElementById("toggle-bait").checked;
             const subs = document.getElementById("toggle-subs").checked;
             const seoTitle = document.getElementById("seo-title").value.trim();
+
+            const btn = document.querySelector(".btn-launch");
+            if (btn) {
+                btn.innerHTML = "<span>⚡️</span> ВІДПРАВКА В ЧЕРГУ БОТА...";
+                btn.style.opacity = "0.8";
+            }
 
             const payload = {
                 action: "render_video",
@@ -1357,12 +1416,7 @@
                 seo_title: seoTitle
             };
 
-            if (tg) {
-                tg.sendData(JSON.stringify(payload));
-            } else {
-                showToast("Дані відправлено в бот!");
-                console.log("Mock Payload:", payload);
-            }
+            sendTelegramPayload(payload, "Завдання прийнято! Переходимо в чат...");
         }
 
         // Action: Buy Stars Package
@@ -1374,26 +1428,22 @@
                 stars: stars,
                 credits: clips
             };
-            if (tg) {
-                tg.sendData(JSON.stringify(payload));
-            } else {
-                showToast(`Рахунок на ${stars} ⭐️ створено!`);
-            }
+            sendTelegramPayload(payload, `Створюємо рахунок на ${stars} ⭐️...`);
         }
 
         // Action: Copy Referral Link
         function copyReferralLink() {
             hapticFeedback('medium');
-            const userId = tg?.initDataUnsafe?.user?.id || "123456";
-            const botUsername = "your_bot";
-            const link = `https://t.me/${botUsername}?start=ref_${userId}`;
+            const userId = tg?.initDataUnsafe?.user?.id || "";
+            const botUsername = "tiktoksoftmusor_bot";
+            const link = userId ? `https://t.me/${botUsername}?start=ref_${userId}` : `https://t.me/${botUsername}`;
             
             if (navigator.clipboard) {
                 navigator.clipboard.writeText(link).then(() => {
                     showToast("Реф-посилання скопійовано в буфер!");
                 });
             } else {
-                showToast("Поділіться своїм посиланням у боті!");
+                showToast("Поділіться посиланням у боті!");
             }
         }
 
@@ -1409,11 +1459,7 @@
                 action: "track_video",
                 url: url
             };
-            if (tg) {
-                tg.sendData(JSON.stringify(payload));
-            } else {
-                showToast("Відео додано до моніторингу!");
-            }
+            sendTelegramPayload(payload, "Відео додано до моніторингу!");
         }
 
         // Action: AI Rating
@@ -1438,11 +1484,7 @@
                 rating: currentRating,
                 tags: tags
             };
-            if (tg) {
-                tg.sendData(JSON.stringify(payload));
-            } else {
-                showToast(`Оцінку ${currentRating}/10 збережено!`);
-            }
+            sendTelegramPayload(payload, `Оцінку ${currentRating}/10 надіслано!`);
         }
     </script>
 </body>
